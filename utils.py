@@ -97,9 +97,10 @@ async def send(update: Update, text, quote=False, reply_markup=None) -> None:
         quote=quote, reply_markup=reply_markup)
 
 
-async def is_active_conversation(update: Update, new=False) -> bool:
+async def is_active_conversation(update: Update,
+                                 new=False, finished=False) -> bool:
     _cid = cid(update)
-    if new or _cid not in CONV:
+    if new or finished or _cid not in CONV:
         if _cid in CONV:
             await CONV[_cid].close()
         try:
@@ -110,10 +111,10 @@ async def is_active_conversation(update: Update, new=False) -> bool:
                        "EdgeGPT API not available. Try again later.")
             return False
         else:
-            missing = "No conversation found or expired. "
+            missing = "Conversation expired. "
             group = ("Reply to any of my messages to interact with me.")
             await send(update,
-                       (f"{missing if not new else ''}"
+                       (f"{missing if not new or finished else ''}"
                         f"Starting new conversation... "
                         f"{group if is_group(update) else ''}"),
                        reply_markup=ReplyKeyboardRemove())
@@ -137,7 +138,6 @@ class Query:
             await send(self.update,
                        "EdgeGPT API not available. Try again later.")
         else:
-            self.resp_id = self._response['invocationId']
             # I got a response without this field,
             # I'm not sure if something wrong happened
             if 'conversationExpiryTime' in self._response['item']:
@@ -145,8 +145,13 @@ class Query:
                     'item']['conversationExpiryTime']
                 delete_conversation(self.context, str(cid(self.update)),
                                     self.expiration)
-            self.conv_id = self._response['item']['conversationId']
-            await self.parse_message(self._response['item']['messages'][1])
+            finished = True
+            for message in self._response['item']['messages']:
+                if 'author' in message and message['author'] == 'bot':
+                    await self.parse_message(message)
+                    finished = False
+            if finished:
+                is_active_conversation(self.update, finished=finished)
 
     async def parse_message(self, message: dict) -> None:
         text = REF.sub(' <b>[\\1]</b>', message['text'])
