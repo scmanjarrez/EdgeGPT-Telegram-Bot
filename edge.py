@@ -9,6 +9,7 @@ from telegram.ext import (ApplicationBuilder, CommandHandler,
                           ContextTypes, filters, MessageHandler)
 from telegram.error import TimedOut
 from telegram import Update
+from pathlib import Path
 
 import utils as ut
 import logging
@@ -31,10 +32,8 @@ async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if ut.allowed(update):
-        await ut.new_conversation(update)
-
-        if (not ut.is_group(update)
-                or (ut.is_group(update) and ut.is_reply(update))):
+        created = await ut.new_conversation(update)
+        if created:
             query = ut.Query(update, context)
             await query.run()
 
@@ -51,7 +50,7 @@ def setup_handlers(app: ApplicationBuilder) -> None:
 
 
 async def edge_close(app: ApplicationBuilder) -> None:
-    for chat, _ in ut.CONV.values():
+    for chat in ut.CONV.values():
         await chat.close()
 
 
@@ -60,20 +59,26 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
     )
-    ut.set_up()
-    application = (ApplicationBuilder()
-                   .token(ut.settings('token'))
-                   .post_shutdown(edge_close)
-                   .build())
-    setup_handlers(application)
-    try:
-        application.run_webhook(listen=ut.settings('listen'),
-                                port=ut.settings('port'),
-                                url_path=ut.settings('token'),
-                                cert=ut.settings('cert'),
-                                webhook_url=(f"https://"
-                                             f"{ut.settings('ip')}/"
-                                             f"{ut.settings('token')}"))
-        # application.run_polling()
-    except TimedOut:
-        logging.error("Bot could not be initialized. Try again later.")
+    if Path(ut.FILE['cfg']).exists() and Path(ut.FILE['cookies']).exists():
+        ut.set_up()
+        application = (ApplicationBuilder()
+                       .token(ut.settings('token'))
+                       .post_shutdown(edge_close)
+                       .build())
+        setup_handlers(application)
+        try:
+            application.run_webhook(listen=ut.settings('listen'),
+                                    port=ut.settings('port'),
+                                    url_path=ut.settings('token'),
+                                    cert=ut.settings('cert'),
+                                    webhook_url=(f"https://"
+                                                 f"{ut.settings('ip')}/"
+                                                 f"{ut.settings('token')}"))
+            # application.run_polling()
+        except TimedOut:
+            logging.getLogger(
+                'telegram.ext._application').error(
+                    "Bot could not be initialized. Try again later.")
+    else:
+        logging.error(f"{ut.FILE['cfg']} or "
+                      f"{ut.FILE['cookies']} file missing.")

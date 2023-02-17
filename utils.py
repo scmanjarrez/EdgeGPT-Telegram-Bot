@@ -6,11 +6,12 @@
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       KeyboardButton, ReplyKeyboardMarkup,
                       ReplyKeyboardRemove)
+from EdgeGPT import Chatbot, NotAllowedToAccess
 from telegram.ext import ContextTypes
 from dateutil.parser import isoparse
-from EdgeGPT import Chatbot
 from telegram import Update
 
+import logging
 import json
 import re
 
@@ -60,52 +61,22 @@ def unlock(chat_id: int) -> None:
         f.write(f'{chat_id}\n')
 
 
-async def send(update: Update, text, quote=False, reply_markup=None) -> None:
-    return await update.effective_message.reply_html(
-        text, disable_web_page_preview=True,
-        quote=quote, reply_markup=reply_markup)
-
-
-async def new_conversation(update: Update, force=False):
-    _cid = cid(update)
-    if (force
-        or (_cid not in CONV
-            and (not is_group(update)
-                 or (is_group(update) and is_reply(update))))):
-        auto = "No conversation found or expired. "
-        group = ("Reply to the last bot message in "
-                 "order to interact with the bot.")
-        resp = await send(update,
-                          (f"{auto if not force else ''}"
-                           f"Starting new conversation... "
-                           f"{group if is_group(update) else ''}"),
-                          reply_markup=ReplyKeyboardRemove())
-        if _cid in CONV:
-            await CONV[_cid][0].close()
-        CONV[_cid] = [Chatbot(cookiePath=FILE['cookies']), resp.id]
-
-
-def is_reply(update: Update) -> bool:
-    return (
-        update.effective_message.reply_to_message.id == CONV[cid(update)][1])
-
-
 def is_group(update: Update) -> bool:
     return update.effective_chat.id < 0
 
 
-def reply_markup(buttons):
+def reply_markup(buttons: list) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup([[KeyboardButton(bt)] for bt in buttons])
 
 
-def inline_markup(buttons):
+def inline_markup(buttons: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [[InlineKeyboardButton(bt[0], bt[1])] for bt in buttons])
 
 
 async def _remove_conversation(context: ContextTypes.DEFAULT_TYPE) -> None:
     job = context.job
-    await CONV[job.chat_id][0].close()
+    await CONV[job.chat_id].close()
     del CONV[job.chat_id]
 
 
@@ -120,24 +91,59 @@ def delete_conversation(context: ContextTypes.DEFAULT_TYPE,
                                name=name)
 
 
+async def send(update: Update, text, quote=False, reply_markup=None) -> None:
+    return await update.effective_message.reply_html(
+        text, disable_web_page_preview=True,
+        quote=quote, reply_markup=reply_markup)
+
+
+async def new_conversation(update: Update, force=False) -> None:
+    _cid = cid(update)
+    if force or _cid not in CONV:
+        if _cid in CONV:
+            await CONV[_cid].close()
+        try:
+            CONV[_cid] = Chatbot(cookiePath=FILE['cookies'])
+        except Exception as e:
+            logging.getLogger('EdgeGPT').error(e)
+            await send(update,
+                       "EdgeGPT API not available. Try again later.")
+            return False
+        else:
+            missing = "No conversation found or expired. "
+            group = ("Reply to any of my messages to interact with me.")
+            await send(update,
+                       (f"{missing if not force else ''}"
+                        f"Starting new conversation... "
+                        f"{group if is_group(update) else ''}"),
+                       reply_markup=ReplyKeyboardRemove())
+            return True
+
+
 class Query:
     def __init__(self, update: Update,
                  context: ContextTypes.DEFAULT_TYPE) -> None:
         self.update = update
         self.context = context
 
-    async def run(self):
-        self._response = await CONV[cid(self.update)][0].ask(
-            self.update.effective_message.text)
-        self.resp_id = self._response['invocationId']
-        # I got a response without this field,
-        # I'm not sure if something wrong happened
-        if 'conversationExpiryTime' in self._response['item']:
-            self.expiration = self._response['item']['conversationExpiryTime']
-            delete_conversation(self.context, str(cid(self.update)),
-                                self.expiration)
-        self.conv_id = self._response['item']['conversationId']
-        await self.parse_message(self._response['item']['messages'][1])
+    async def run(self) -> None:
+        try:
+            self._response = await CONV[cid(self.update)].ask(
+                self.update.effective_message.text)
+        except NotAllowedToAccess:
+            await send(self.update,
+                       "EdgeGPT API not available. Try again later.")
+        else:
+            self.resp_id = self._response['invocationId']
+            # I got a response without this field,
+            # I'm not sure if something wrong happened
+            if 'conversationExpiryTime' in self._response['item']:
+                self.expiration = self._response[
+                    'item']['conversationExpiryTime']
+                delete_conversation(self.context, str(cid(self.update)),
+                                    self.expiration)
+            self.conv_id = self._response['item']['conversationId']
+            await self.parse_message(self._response['item']['messages'][1])
 
     async def parse_message(self, message: dict) -> None:
         text = REF.sub(' <b>[\\1]</b>', message['text'])
@@ -150,9 +156,8 @@ class Query:
         suggestions = reply_markup(
             [sug['text'] for sug in message['suggestedResponses']])
         msg = f"{text}{msg_ref if references else ''}"
-        resp = await send(self.update, msg,
-                          reply_markup=(None
-                                        if is_group(self.update)
-                                        else suggestions),
-                          quote=True)
-        CONV[cid(self.update)][1] = resp.id
+        await send(self.update, msg,
+                   reply_markup=(None
+                                 if is_group(self.update)
+                                 else suggestions),
+                   quote=True)
