@@ -3,12 +3,12 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
-                      KeyboardButton, ReplyKeyboardMarkup,
-                      ReplyKeyboardRemove)
-from EdgeGPT import Chatbot, NotAllowedToAccess
+from telegram import (constants, InlineKeyboardButton,
+                      InlineKeyboardMarkup, KeyboardButton,
+                      ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from telegram.ext import ContextTypes
 from dateutil.parser import isoparse
+from EdgeGPT import Chatbot
 from telegram import Update
 
 import logging
@@ -97,9 +97,9 @@ async def send(update: Update, text, quote=False, reply_markup=None) -> None:
         quote=quote, reply_markup=reply_markup)
 
 
-async def new_conversation(update: Update, force=False) -> None:
+async def is_active_conversation(update: Update, new=False) -> bool:
     _cid = cid(update)
-    if force or _cid not in CONV:
+    if new or _cid not in CONV:
         if _cid in CONV:
             await CONV[_cid].close()
         try:
@@ -113,11 +113,11 @@ async def new_conversation(update: Update, force=False) -> None:
             missing = "No conversation found or expired. "
             group = ("Reply to any of my messages to interact with me.")
             await send(update,
-                       (f"{missing if not force else ''}"
+                       (f"{missing if not new else ''}"
                         f"Starting new conversation... "
                         f"{group if is_group(update) else ''}"),
                        reply_markup=ReplyKeyboardRemove())
-            return True
+    return True
 
 
 class Query:
@@ -127,10 +127,13 @@ class Query:
         self.context = context
 
     async def run(self) -> None:
+        await self.update.effective_chat.send_chat_action(
+            constants.ChatAction.TYPING)
         try:
             self._response = await CONV[cid(self.update)].ask(
                 self.update.effective_message.text)
-        except NotAllowedToAccess:
+        except Exception as e:
+            logging.getLogger('EdgeGPT').error(e)
             await send(self.update,
                        "EdgeGPT API not available. Try again later.")
         else:

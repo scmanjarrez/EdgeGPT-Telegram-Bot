@@ -27,13 +27,13 @@ async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if ut.allowed(update):
-        await ut.new_conversation(update, force=True)
+        await ut.is_active_conversation(update, new=True)
 
 
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if ut.allowed(update):
-        created = await ut.new_conversation(update)
-        if created:
+        status = await ut.is_active_conversation(update)
+        if status:
             query = ut.Query(update, context)
             await query.run()
 
