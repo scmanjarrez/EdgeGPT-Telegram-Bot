@@ -15,7 +15,6 @@ import logging
 import json
 import re
 
-REF = re.compile(r'\[\^(\d+)\^\]')
 FILE = {
     'cfg': '.config.json',
     'cookies': '.cookies.json',
@@ -26,6 +25,10 @@ DATA = {
     'allowed': []
 }
 CONV = {}
+REF = re.compile(r'\[\^(\d+)\^\]')
+CODE = re.compile(r'(?<!\()(?:```(.*?)```|`(.*?)`)')
+BOLD = re.compile(r'(?:\*\*(.*?)\*\*|__(.*?)__)')
+ITA = re.compile(r'(?<!\()(?:\*(.*?)\*|_(.*?)_)')
 
 
 def set_up() -> None:
@@ -130,43 +133,62 @@ class Query:
     async def run(self) -> None:
         await self.update.effective_chat.send_chat_action(
             constants.ChatAction.TYPING)
-        try:
-            self._response = await CONV[cid(self.update)].ask(
-                self.update.effective_message.text)
-        except Exception as e:
-            logging.getLogger('EdgeGPT').error(e)
-            await send(self.update,
-                       "EdgeGPT API not available. Try again later.")
-        else:
-            # I got a response without this field,
-            # I'm not sure if something wrong happened
-            if 'conversationExpiryTime' in self._response['item']:
-                self.expiration = self._response[
-                    'item']['conversationExpiryTime']
-                delete_conversation(self.context, str(cid(self.update)),
-                                    self.expiration)
+        self._response = await CONV[cid(self.update)].ask(
+            self.update.effective_message.text)
+        item = self._response['item']
+        if item['result']['value'] == 'Success':
+            self.expiration = item['conversationExpiryTime']
+            delete_conversation(self.context, str(cid(self.update)),
+                                self.expiration)
             finished = True
-            for message in self._response['item']['messages']:
-                if 'author' in message and message['author'] == 'bot':
+            for message in item['messages']:
+                if message['author'] == 'bot':
                     await self.parse_message(message)
                     finished = False
             if finished:
                 await is_active_conversation(self.update,
                                              finished=finished)
+        else:
+            logging.getLogger('EdgeGPT').error(
+                item['result']['error'])
+            msg = "EdgeGPT API not available. Try again later."
+            if item['result']['value'] == 'Throttled':
+                msg = ("Reached Bing chat daily quota. "
+                       "Try again tomorrow, sorry!")
+            await send(self.update, msg)
+
+    def markdown_to_html(self, text: str) -> str:
+        code = []
+        not_code = []
+        last = 0
+        for itr in CODE.finditer(text):
+            code.append(CODE.sub('<code>\\1\\2</code>',
+                                 text[itr.start(0):itr.end(0)]))
+            not_code.append(text[last:itr.start(0)])
+            last = itr.end(0)
+        not_code.append(text[last:])
+        for idx, sub in enumerate(not_code):
+            new = BOLD.sub('<b>\\1\\2</b>', sub)
+            new = ITA.sub('<i>\\1\\2</i>', new)
+            not_code[idx] = new
+        added = 0
+        for idx, cc in enumerate(code, 1):
+            not_code.insert(added + idx, cc)
+            added += 1
+        return ''.join(not_code)
 
     async def parse_message(self, message: dict) -> None:
-        text = REF.sub(' <b>[\\1]</b>', message['text'])
-        references = '\n'.join([
-            f"- <b>[{idx}]</b>: <a href='{ref['seeMoreUrl']}'>"
-            f"{ref['providerDisplayName']}</a>"
-            for idx, ref in enumerate(message['sourceAttributions'], 1)
-        ])
-        msg_ref = f"\n\n<b>References</b>:\n{references}"
-        suggestions = reply_markup(
-            [sug['text'] for sug in message['suggestedResponses']])
-        msg = f"{text}{msg_ref if references else ''}"
-        await send(self.update, msg,
-                   reply_markup=(None
-                                 if is_group(self.update)
-                                 else suggestions),
-                   quote=True)
+        text = self.markdown_to_html(message['text'])
+        if 'sourceAttributions' in message:
+            references = {str(idx): ref['seeMoreUrl']
+                          for idx, ref in enumerate(
+                                  message['sourceAttributions'], 1)}
+            text = REF.sub(
+                lambda x: (f"<a href='{references[x.group(1)]}'>"
+                           f" [{x.group(1)}]</a>"),
+                text)
+        suggestions = None
+        if 'suggestedResponses' in message and not is_group(self.update):
+            suggestions = reply_markup(
+                [sug['text'] for sug in message['suggestedResponses']])
+        await send(self.update, text, reply_markup=suggestions, quote=True)
