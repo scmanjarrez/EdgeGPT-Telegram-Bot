@@ -151,7 +151,8 @@ class Query:
                     await self.parse_message(message)
                     finished = False
             if finished:
-                is_active_conversation(self.update, finished=finished)
+                await is_active_conversation(self.update,
+                                             finished=finished)
 
     async def parse_message(self, message: dict) -> None:
         text = REF.sub(' <b>[\\1]</b>', message['text'])
