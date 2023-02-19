@@ -83,11 +83,15 @@ async def _remove_conversation(context: ContextTypes.DEFAULT_TYPE) -> None:
     del CONV[job.chat_id]
 
 
-def delete_conversation(context: ContextTypes.DEFAULT_TYPE,
-                        name: str, expiration: str) -> None:
+def delete_job(context: ContextTypes.DEFAULT_TYPE, name: str) -> None:
     current_jobs = context.job_queue.get_jobs_by_name(name)
     for job in current_jobs:
         job.schedule_removal()
+
+
+def delete_conversation(context: ContextTypes.DEFAULT_TYPE,
+                        name: str, expiration: str) -> None:
+    delete_job(context, name)
     context.job_queue.run_once(_remove_conversation,
                                isoparse(expiration),
                                chat_id=int(name),
@@ -124,6 +128,18 @@ async def is_active_conversation(update: Update,
     return True
 
 
+async def send_typing(context: ContextTypes.DEFAULT_TYPE) -> None:
+    await context.bot.send_chat_action(context.job.chat_id,
+                                       constants.ChatAction.TYPING)
+
+
+def typing_schedule(update: Update,
+                    context: ContextTypes.DEFAULT_TYPE) -> None:
+    _cid = cid(update)
+    context.job_queue.run_repeating(send_typing, 7, first=1,
+                                    chat_id=_cid, name=f'typing_{_cid}')
+
+
 class Query:
     def __init__(self, update: Update,
                  context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -131,14 +147,15 @@ class Query:
         self.context = context
 
     async def run(self) -> None:
-        await self.update.effective_chat.send_chat_action(
-            constants.ChatAction.TYPING)
+        _cid = cid(self.update)
+        typing_schedule(self.update, self.context)
         self._response = await CONV[cid(self.update)].ask(
             self.update.effective_message.text)
+        delete_job(self.context, f'typing_{_cid}')
         item = self._response['item']
         if item['result']['value'] == 'Success':
             self.expiration = item['conversationExpiryTime']
-            delete_conversation(self.context, str(cid(self.update)),
+            delete_conversation(self.context, str(_cid),
                                 self.expiration)
             finished = True
             for message in item['messages']:
