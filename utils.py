@@ -165,6 +165,8 @@ class Query:
             if finished:
                 await is_active_conversation(self.update,
                                              finished=finished)
+                query = Query(self.update, self.context)
+                await query.run()
         else:
             logging.getLogger('EdgeGPT').error(
                 item['result']['error'])
