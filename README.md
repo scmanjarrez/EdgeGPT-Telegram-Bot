@@ -31,6 +31,8 @@ new - Start a new conversation with the bot.
     > - **token** - Telegram bot token, obtained from
     > [@BotFather](https://t.me/BotFather)
     >
+    > - **webhook**: true to run the bot using webhooks. false to use polling.
+    >
     > - **ip**: Your server ip, where the bot is hosted
     >
     > - **port**: Port to receive telegram updates: port must be 443, 80, 88 or 8443.

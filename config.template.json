@@ -1,13 +1,14 @@
 {
-    "settings": {
-        "token": "bot_token",
-        "ip": "vps_ip",
-        "listen": "0.0.0.0",
-        "port": "vps_port",
-        "cert": "cert_path"
-    },
-    "chats": {
-        "password": "password_to_enable_bot",
-        "id": ["list", "of", "allowed", "telegram", "ids"]
-    }
+  "settings": {
+      "token": "bot_token",
+      "webhook": true,
+      "ip": "vps_ip",
+      "listen": "0.0.0.0",
+      "port": "vps_port",
+      "cert": "cert_path"
+  },
+  "chats": {
+      "password": "password_to_enable_bot",
+      "id": ["list", "of", "allowed", "telegram", "ids"]
+  }
 }

@@ -67,14 +67,17 @@ if __name__ == "__main__":
                        .build())
         setup_handlers(application)
         try:
-            application.run_webhook(listen=ut.settings('listen'),
-                                    port=ut.settings('port'),
-                                    url_path=ut.settings('token'),
-                                    cert=ut.settings('cert'),
-                                    webhook_url=(f"https://"
-                                                 f"{ut.settings('ip')}/"
-                                                 f"{ut.settings('token')}"))
-            # application.run_polling()
+            if ut.settings('webhook'):
+                application.run_webhook(listen=ut.settings('listen'),
+                                        port=ut.settings('port'),
+                                        url_path=ut.settings('token'),
+                                        cert=ut.settings('cert'),
+                                        webhook_url=(
+                                            f"https://"
+                                            f"{ut.settings('ip')}/"
+                                            f"{ut.settings('token')}"))
+            else:
+                application.run_polling()
         except TimedOut:
             logging.getLogger(
                 'telegram.ext._application').error(
