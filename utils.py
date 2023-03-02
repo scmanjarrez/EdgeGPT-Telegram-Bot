@@ -197,17 +197,27 @@ class Query:
         return ''.join(not_code)
 
     async def parse_message(self, message: dict) -> None:
+        def generate_link(match: re.Match) -> str:
+            text = match.group(1)
+            link = f" [{text}]"
+            if text in references:
+                link = f"<a href='{references[text]}'> [{text}]</a>"
+            return link
+
         text = self.markdown_to_html(message['text'])
+        extra = ""
         if 'sourceAttributions' in message:
             references = {str(idx): ref['seeMoreUrl']
                           for idx, ref in enumerate(
                                   message['sourceAttributions'], 1)}
-            text = REF.sub(
-                lambda x: (f"<a href='{references[x.group(1)]}'>"
-                           f" [{x.group(1)}]</a>"),
-                text)
+            full_ref = [f'<a href="{url}">[{idx}]</a>'
+                        for idx, url in references.items()]
+            if references:
+                extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
+            text = REF.sub(generate_link, text)
         suggestions = None
         if 'suggestedResponses' in message and not is_group(self.update):
             suggestions = reply_markup(
                 [sug['text'] for sug in message['suggestedResponses']])
-        await send(self.update, text, reply_markup=suggestions, quote=True)
+        await send(self.update, f"{text}{extra}",
+                   reply_markup=suggestions, quote=True)
