@@ -5,15 +5,14 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-import logging
+from telegram.ext import (ApplicationBuilder, CommandHandler,
+                          ContextTypes, filters, MessageHandler)
+from telegram.error import TimedOut
+from telegram import Update
 from pathlib import Path
 
-from telegram import Update
-from telegram.error import TimedOut
-from telegram.ext import (ApplicationBuilder, CommandHandler, ContextTypes,
-                          MessageHandler, filters)
-
 import utils as ut
+import logging
 
 
 async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -73,9 +72,10 @@ if __name__ == "__main__":
                                         port=ut.settings('port'),
                                         url_path=ut.settings('token'),
                                         cert=ut.settings('cert'),
-                                        webhook_url=(f"https://"
-                                        f"{ut.settings('ip')}/"
-                                                     f"{ut.settings('token')}"))
+                                        webhook_url=(
+                                            f"https://"
+                                            f"{ut.settings('ip')}/"
+                                            f"{ut.settings('token')}"))
             else:
                 application.run_polling()
         except TimedOut:

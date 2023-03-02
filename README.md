@@ -31,7 +31,7 @@ new - Start a new conversation with the bot.
     > - **token** - Telegram bot token, obtained from
     > [@BotFather](https://t.me/BotFather)
     >
-    > - **webhook**: ture is runing to server mode. fasle is run client mode.
+    > - **webhook**: true to run the bot using webhooks. false to use polling.
     >
     > - **ip**: Your server ip, where the bot is hosted
     >
