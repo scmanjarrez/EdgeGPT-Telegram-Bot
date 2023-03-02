@@ -31,6 +31,8 @@ new - Start a new conversation with the bot.
     > - **token** - Telegram bot token, obtained from
     > [@BotFather](https://t.me/BotFather)
     >
+    > - **webhook**: ture is runing to server mode. fasle is run client mode.
+    >
     > - **ip**: Your server ip, where the bot is hosted
     >
     > - **port**: Port to receive telegram updates: port must be 443, 80, 88 or 8443.
