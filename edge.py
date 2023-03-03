@@ -82,6 +82,9 @@ if __name__ == "__main__":
             logging.getLogger(
                 'telegram.ext._application').error(
                     "Bot could not be initialized. Try again later.")
+        except KeyError:
+            logging.error(f"New setting 'webhook' required "
+                          f"in {ut.FILE['cfg']}. Check README for more info.")
     else:
         logging.error(f"{ut.FILE['cfg']} or "
                       f"{ut.FILE['cookies']} file missing.")
