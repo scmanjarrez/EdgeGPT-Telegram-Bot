@@ -3,17 +3,16 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-from telegram import (constants, InlineKeyboardButton,
-                      InlineKeyboardMarkup, KeyboardButton,
-                      ReplyKeyboardMarkup, ReplyKeyboardRemove)
-from telegram.ext import ContextTypes
+import json
+import logging
+import re
+
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot
-from telegram import Update
-
-import logging
-import json
-import re
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
+                      KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
+                      Update, constants)
+from telegram.ext import ContextTypes
 
 FILE = {
     'cfg': '.config.json',
@@ -209,15 +208,16 @@ class Query:
         if 'sourceAttributions' in message:
             references = {str(idx): ref['seeMoreUrl']
                           for idx, ref in enumerate(
-                                  message['sourceAttributions'], 1)}
+                message['sourceAttributions'], 1)}
             full_ref = [f'<a href="{url}">[{idx}]</a>'
                         for idx, url in references.items()]
             if references:
                 extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
             text = REF.sub(generate_link, text)
-        suggestions = None
+        bt_list = ["/new"]
         if 'suggestedResponses' in message and not is_group(self.update):
-            suggestions = reply_markup(
-                [sug['text'] for sug in message['suggestedResponses']])
+            bt_list = [sug['text']
+                       for sug in message['suggestedResponses']] + bt_list
+        suggestions = reply_markup(bt_list)
         await send(self.update, f"{text}{extra}",
                    reply_markup=suggestions, quote=True)
