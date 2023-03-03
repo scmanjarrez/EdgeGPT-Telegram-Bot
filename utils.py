@@ -134,7 +134,8 @@ async def is_active_conversation(
                 update,
                 (
                     f"{missing if not new or finished else ''}"
-                    "Starting new conversation... "
+                    "Starting new conversation. "
+                    f"{'Ask me anything... ' if new else ''}"
                     f"{group if is_group(update) else ''}"
                 ),
                 reply_markup=ReplyKeyboardRemove(),
@@ -226,6 +227,7 @@ class Query:
 
         text = self.markdown_to_html(message["text"])
         extra = ""
+
         if "sourceAttributions" in message:
             references = {
                 str(idx): ref["seeMoreUrl"]
@@ -238,11 +240,12 @@ class Query:
             if references:
                 extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
             text = REF.sub(generate_link, text)
-        suggestions = None
+        bt_list = ["/new"]
         if "suggestedResponses" in message and not is_group(self.update):
-            suggestions = reply_markup(
-                [sug["text"] for sug in message["suggestedResponses"]]
-            )
+            bt_list = [
+                sug["text"] for sug in message["suggestedResponses"]
+            ] + bt_list
+        suggestions = reply_markup(bt_list)
         await send(
             self.update, f"{text}{extra}", reply_markup=suggestions, quote=True
         )
