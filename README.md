@@ -33,6 +33,9 @@ new - Start a new conversation with the bot.
     >
     > - **webhook**: true to run the bot using webhooks. false to use polling.
     >
+    > - **log_level**: set level of the logging module.
+    > More info: [log levels](https://docs.python.org/3/library/logging.html#logging-levels)
+    >
     > - **ip**: Your server ip, where the bot is hosted
     >
     > - **port**: Port to receive telegram updates: port must be 443, 80, 88 or 8443.

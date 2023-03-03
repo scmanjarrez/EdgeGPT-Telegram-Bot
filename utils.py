@@ -42,6 +42,10 @@ def set_up() -> None:
             DATA["allowed"] = [int(_cid) for _cid in f.read().splitlines()]
     except FileNotFoundError:
         DATA["allowed"] = []
+    try:
+        logging.getLogger().setLevel(settings("log_level").upper())
+    except KeyError:
+        pass
 
 
 def settings(key: str) -> str:
