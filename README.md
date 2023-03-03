@@ -60,6 +60,13 @@ new - Start a new conversation with the bot.
     > **Note:** If you run the bot in port 80, it may be needed to run the bot as
     > superuser (**sudo**).
 
+# Contributing
+Happy to see you willing to make the project better. In order to make a contribution,
+please respect the following format:
+- Imports sorted with usort: `usort format <file>`
+- Code formatted with black (line lenght 79): `black -l 79 <file>`
+
+> If you are using flake8, ignore E203 warning.
 
 # License
     Copyright (c) 2023 scmanjarrez. All rights reserved.
