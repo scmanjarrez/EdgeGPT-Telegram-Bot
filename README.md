@@ -69,6 +69,23 @@ please respect the following format:
 - Imports sorted with usort: `usort format <file>`
 - Code formatted with black (line lenght 79): `black -l 79 <file>`
 
+### VSCode project setting
+
+VSCode should have the setting in settings.json:
+
+```
+{
+    "python.analysis.fixAll": [],
+    "python.formatting.blackArgs": [
+        "-l 79"
+    ],
+    "python.formatting.provider": "black",
+    "isort.path": [
+        "usort format"
+    ]
+}
+```
+
 > If you are using flake8, ignore E203 warning.
 
 # License
