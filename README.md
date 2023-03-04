@@ -19,6 +19,10 @@ new - Start a new conversation with the bot.
 
     `pip install -r requirements.txt`
 
+    > If you want to contribute, install also development dependencies.
+    >
+    >    `pip install -r dev_requirements.txt`
+
 - Create a self-signed certificate in order to communicate with telegram server using SSL.
 
     `openssl req -newkey rsa:2048 -sha256 -nodes -keyout ferdinand.key
