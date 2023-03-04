@@ -69,7 +69,31 @@ please respect the following format:
 - Imports sorted with usort: `usort format <file>`
 - Code formatted with black (line lenght 79): `black -l 79 <file>`
 
-> If you are using flake8, ignore E203 warning.
+> If you are using flake8, ignore E203 in .flake8
+> ```
+> [flake8]
+> extend-ignore = E203
+> ```
+
+### VSCode project settings
+VSCode should have the following settings in settings.json:
+```
+{
+    "python.analysis.fixAll": [],
+    "python.formatting.blackArgs": [
+        "-l 79"
+    ],
+    "python.formatting.provider": "black",
+    "isort.path": [
+        "usort format"
+    ],
+}
+```
+> ```
+> "python.linting.flake8Args": [
+>     "--ignore=E203",
+> ],
+> ```
 
 # License
     Copyright (c) 2023 scmanjarrez. All rights reserved.
