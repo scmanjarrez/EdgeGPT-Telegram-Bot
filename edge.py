@@ -5,24 +5,32 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-from telegram.ext import (ApplicationBuilder, CommandHandler,
-                          ContextTypes, filters, MessageHandler)
-from telegram.error import TimedOut
-from telegram import Update
+import logging
 from pathlib import Path
 
 import utils as ut
-import logging
+from telegram import Update
+from telegram.error import TimedOut
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    filters,
+    MessageHandler,
+)
 
 
 async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
-    if (context.args
-            and ut.passwd_correct(context.args[0])
-            and cid not in ut.DATA['allowed']):
+    if (
+        context.args
+        and ut.passwd_correct(context.args[0])
+        and cid not in ut.DATA["allowed"]
+    ):
         ut.unlock(cid)
-        await ut.send(update,
-                      "Bot unlocked, enjoy the new ChatGPT experience.")
+        await ut.send(
+            update, "Bot unlocked, enjoy the new ChatGPT experience."
+        )
 
 
 async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -39,10 +47,10 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def setup_handlers(app: ApplicationBuilder) -> None:
-    unlock_handler = CommandHandler('unlock', unlock)
+    unlock_handler = CommandHandler("unlock", unlock)
     app.add_handler(unlock_handler)
 
-    new_handler = CommandHandler('new', new)
+    new_handler = CommandHandler("new", new)
     app.add_handler(new_handler)
 
     message_handler = MessageHandler(filters.TEXT, message)
@@ -56,35 +64,41 @@ async def edge_close(app: ApplicationBuilder) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=logging.INFO,
     )
-    if Path(ut.FILE['cfg']).exists() and Path(ut.FILE['cookies']).exists():
+    if Path(ut.FILE["cfg"]).exists() and Path(ut.FILE["cookies"]).exists():
         ut.set_up()
-        application = (ApplicationBuilder()
-                       .token(ut.settings('token'))
-                       .post_shutdown(edge_close)
-                       .build())
+        application = (
+            ApplicationBuilder()
+            .token(ut.settings("token"))
+            .post_shutdown(edge_close)
+            .build()
+        )
         setup_handlers(application)
         try:
-            if ut.settings('webhook'):
-                application.run_webhook(listen=ut.settings('listen'),
-                                        port=ut.settings('port'),
-                                        url_path=ut.settings('token'),
-                                        cert=ut.settings('cert'),
-                                        webhook_url=(
-                                            f"https://"
-                                            f"{ut.settings('ip')}/"
-                                            f"{ut.settings('token')}"))
+            if ut.settings("webhook"):
+                application.run_webhook(
+                    listen=ut.settings("listen"),
+                    port=ut.settings("port"),
+                    url_path=ut.settings("token"),
+                    cert=ut.settings("cert"),
+                    webhook_url=(
+                        f"https://{ut.settings('ip')}/{ut.settings('token')}"
+                    ),
+                )
             else:
                 application.run_polling()
         except TimedOut:
-            logging.getLogger(
-                'telegram.ext._application').error(
-                    "Bot could not be initialized. Try again later.")
+            logging.getLogger("telegram.ext._application").error(
+                "Bot could not be initialized. Try again later."
+            )
         except KeyError:
-            logging.error(f"New setting 'webhook' required "
-                          f"in {ut.FILE['cfg']}. Check README for more info.")
+            logging.error(
+                "New setting 'webhook' required "
+                f"in {ut.FILE['cfg']}. Check README for more info."
+            )
     else:
-        logging.error(f"{ut.FILE['cfg']} or "
-                      f"{ut.FILE['cookies']} file missing.")
+        logging.error(
+            f"{ut.FILE['cfg']} or {ut.FILE['cookies']} file missing."
+        )

@@ -19,6 +19,10 @@ new - Start a new conversation with the bot.
 
     `pip install -r requirements.txt`
 
+    > If you want to contribute, install also development dependencies.
+    >
+    >    `pip install -r dev_requirements.txt`
+
 - Create a self-signed certificate in order to communicate with telegram server using SSL.
 
     `openssl req -newkey rsa:2048 -sha256 -nodes -keyout ferdinand.key
@@ -32,6 +36,9 @@ new - Start a new conversation with the bot.
     > [@BotFather](https://t.me/BotFather)
     >
     > - **webhook**: true to run the bot using webhooks. false to use polling.
+    >
+    > - **log_level**: set level of the logging module.
+    > More info: [log levels](https://docs.python.org/3/library/logging.html#logging-levels)
     >
     > - **ip**: Your server ip, where the bot is hosted
     >
@@ -60,6 +67,37 @@ new - Start a new conversation with the bot.
     > **Note:** If you run the bot in port 80, it may be needed to run the bot as
     > superuser (**sudo**).
 
+# Contributing
+Happy to see you willing to make the project better. In order to make a contribution,
+please respect the following format:
+- Imports sorted with usort: `usort format <file>`
+- Code formatted with black (line lenght 79): `black -l 79 <file>`
+
+> If you are using flake8, ignore E203 in .flake8
+> ```
+> [flake8]
+> extend-ignore = E203
+> ```
+
+### VSCode project settings
+VSCode should have the following settings in settings.json:
+```
+{
+    "python.analysis.fixAll": [],
+    "python.formatting.blackArgs": [
+        "-l 79"
+    ],
+    "python.formatting.provider": "black",
+    "isort.path": [
+        "usort format"
+    ],
+}
+```
+> ```
+> "python.linting.flake8Args": [
+>     "--ignore=E203",
+> ],
+> ```
 
 # License
     Copyright (c) 2023 scmanjarrez. All rights reserved.

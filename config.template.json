@@ -2,6 +2,7 @@
   "settings": {
       "token": "bot_token",
       "webhook": true,
+      "log_level": "INFO",
       "ip": "vps_ip",
       "listen": "0.0.0.0",
       "port": "vps_port",
