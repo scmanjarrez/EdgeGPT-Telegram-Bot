@@ -5,8 +5,12 @@
 
 import json
 
+import asyncio
+import edge_tts
 import logging
 import re
+import tempfile
+import os
 
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot
@@ -46,6 +50,11 @@ def set_up() -> None:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
         pass
+
+
+def save_cfg() -> None:
+    with open(FILE["cfg"], "w") as f:
+        json.dump(DATA["cfg"], f, indent=2)
 
 
 def settings(key: str) -> str:
@@ -116,6 +125,33 @@ async def send(update: Update, text, quote=False, reply_markup=None) -> None:
         quote=quote,
         reply_markup=reply_markup,
     )
+
+
+async def generate_voice(text, voice="zh-CN-YunjianNeural") -> str:
+    voice_text = REF.sub("", text)
+    voice_text = BOLD.sub("", voice_text)
+    logging.info(voice_text)
+    OUTPUT_FILE = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    communicate = edge_tts.Communicate(voice_text, voice)
+    await communicate.save(OUTPUT_FILE.name)
+    return OUTPUT_FILE.name
+
+
+async def send_voice(update: Update, voice: str) -> None:
+    with open(voice, "rb") as f:
+        await update.effective_message.reply_voice(f)
+        os.remove(voice)
+
+
+async def show_voice_name(update: Update) -> None:
+    await update.effective_message.reply_text(settings("voice"))
+
+
+async def set_voice_name(update: Update) -> None:
+    voice = update.effective_message.text.split("voice ")[1]
+    DATA["cfg"]["settings"]["voice"] = voice
+    save_cfg()
+    await show_voice_name(update)
 
 
 async def is_active_conversation(
@@ -229,6 +265,9 @@ class Query:
                 link = f"<a href='{references[text]}'> [{text}]</a>"
             return link
 
+        logger = logging.getLogger("EdgeGPT")
+        logger.info(message)
+
         text = self.markdown_to_html(message["text"])
         extra = ""
 
@@ -253,3 +292,8 @@ class Query:
         await send(
             self.update, f"{text}{extra}", reply_markup=suggestions, quote=True
         )
+
+        if settings("reply_voice"):
+            voice = settings("voice")
+            voice_file = await generate_voice(message["text"], voice=voice)
+            await send_voice(self.update, voice=voice_file)

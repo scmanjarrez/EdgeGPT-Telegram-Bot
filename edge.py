@@ -38,6 +38,14 @@ async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await ut.is_active_conversation(update, new=True)
 
 
+async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if ut.allowed(update):
+        if len(context.args) > 0:
+            await ut.set_voice_name(update)
+        else:
+            await ut.show_voice_name(update)
+
+
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if ut.allowed(update):
         status = await ut.is_active_conversation(update)
@@ -52,6 +60,9 @@ def setup_handlers(app: ApplicationBuilder) -> None:
 
     new_handler = CommandHandler("new", new)
     app.add_handler(new_handler)
+
+    voice_handler = CommandHandler("voice", voice)
+    app.add_handler(voice_handler)
 
     message_handler = MessageHandler(filters.TEXT, message)
     application.add_handler(message_handler)

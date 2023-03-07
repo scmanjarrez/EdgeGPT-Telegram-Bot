@@ -35,6 +35,11 @@ new - Start a new conversation with the bot.
     > - **token** - Telegram bot token, obtained from
     > [@BotFather](https://t.me/BotFather)
     >
+    > - **reply_voice**: true to get a voice answer. false to haven't voice answer.
+    >
+    > - **voice**: voice name.
+    > More info: [Language and voice support for the Speech service](https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/language-support?tabs=stt)
+    > 
     > - **webhook**: true to run the bot using webhooks. false to use polling.
     >
     > - **log_level**: set level of the logging module.
