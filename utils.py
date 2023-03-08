@@ -5,12 +5,10 @@
 
 import json
 
-import asyncio
-import edge_tts
 import logging
 import re
-import tempfile
-import os
+
+import tts
 
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot
@@ -127,33 +125,6 @@ async def send(update: Update, text, quote=False, reply_markup=None) -> None:
     )
 
 
-async def generate_voice(text, voice="zh-CN-YunjianNeural") -> str:
-    voice_text = REF.sub("", text)
-    voice_text = BOLD.sub("", voice_text)
-    logging.info(voice_text)
-    OUTPUT_FILE = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-    communicate = edge_tts.Communicate(voice_text, voice)
-    await communicate.save(OUTPUT_FILE.name)
-    return OUTPUT_FILE.name
-
-
-async def send_voice(update: Update, voice: str) -> None:
-    with open(voice, "rb") as f:
-        await update.effective_message.reply_voice(f)
-        os.remove(voice)
-
-
-async def show_voice_name(update: Update) -> None:
-    await update.effective_message.reply_text(settings("voice"))
-
-
-async def set_voice_name(update: Update) -> None:
-    voice = update.effective_message.text.split("voice ")[1]
-    DATA["cfg"]["settings"]["voice"] = voice
-    save_cfg()
-    await show_voice_name(update)
-
-
 async def is_active_conversation(
     update: Update, new=False, finished=False
 ) -> bool:
@@ -204,13 +175,15 @@ class Query:
     ) -> None:
         self.update = update
         self.context = context
+        self.text = ""
+        self.include_question = False
+        if update.message.voice == None:
+            self.text = update.effective_message.text
 
     async def run(self) -> None:
         _cid = cid(self.update)
         typing_schedule(self.update, self.context)
-        self._response = await CONV[cid(self.update)].ask(
-            self.update.effective_message.text
-        )
+        self._response = await CONV[cid(self.update)].ask(self.text)
         delete_job(self.context, f"typing_{_cid}")
         item = self._response["item"]
         if item["result"]["value"] == "Success":
@@ -289,11 +262,13 @@ class Query:
                 sug["text"] for sug in message["suggestedResponses"]
             ] + bt_list
         suggestions = reply_markup(bt_list)
+        if self.include_question:
+            text = f"You: {self.text}\n\n{text}"
         await send(
             self.update, f"{text}{extra}", reply_markup=suggestions, quote=True
         )
 
         if settings("reply_voice"):
             voice = settings("voice")
-            voice_file = await generate_voice(message["text"], voice=voice)
-            await send_voice(self.update, voice=voice_file)
+            voice_file = await tts.generate_voice(message["text"], voice=voice)
+            await tts.send_voice(self.update, voice=voice_file)
