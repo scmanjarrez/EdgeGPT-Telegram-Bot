@@ -8,6 +8,8 @@
 import logging
 from pathlib import Path
 
+import asr
+import tts
 import utils as ut
 from telegram import Update
 from telegram.error import TimedOut
@@ -38,12 +40,24 @@ async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await ut.is_active_conversation(update, new=True)
 
 
-async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def voice_setting(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     if ut.allowed(update):
         if len(context.args) > 0:
-            await ut.set_voice_name(update)
+            await tts.set_voice_name(update)
         else:
-            await ut.show_voice_name(update)
+            await tts.show_voice_name(update)
+
+
+async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if ut.allowed(update):
+        status = await ut.is_active_conversation(update)
+        if status:
+            query = ut.Query(update, context)
+            query.text = await asr.voice_to_text(update)
+            query.include_question = True
+            await query.run()
 
 
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -61,11 +75,16 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     new_handler = CommandHandler("new", new)
     app.add_handler(new_handler)
 
-    voice_handler = CommandHandler("voice", voice)
+    voice_handler = CommandHandler("voice", voice_setting)
     app.add_handler(voice_handler)
 
-    message_handler = MessageHandler(filters.TEXT, message)
+    message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, message)
     application.add_handler(message_handler)
+
+    voice_message_handler = MessageHandler(
+        filters.VOICE & ~filters.COMMAND & ~filters.TEXT, voice
+    )
+    application.add_handler(voice_message_handler)
 
 
 async def edge_close(app: ApplicationBuilder) -> None:

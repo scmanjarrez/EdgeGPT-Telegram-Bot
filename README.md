@@ -39,6 +39,9 @@ new - Start a new conversation with the bot.
     >
     > - **voice**: voice name.
     > More info: [Language and voice support for the Speech service](https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/language-support?tabs=stt)
+    >
+    > - **assemblyai_token**: Your AssemblyAI token. It use to ASR.
+    > More info: [Supported Languages](https://www.assemblyai.com/docs#supported-languages)
     > 
     > - **webhook**: true to run the bot using webhooks. false to use polling.
     >
