@@ -8,6 +8,8 @@
 import logging
 from pathlib import Path
 
+import asr
+import tts
 import utils as ut
 from telegram import Update
 from telegram.error import TimedOut
@@ -17,6 +19,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
     MessageHandler,
+    CallbackQueryHandler,
 )
 
 
@@ -38,12 +41,38 @@ async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await ut.is_active_conversation(update, new=True)
 
 
+async def voice_setting(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    if ut.allowed(update):
+        if len(context.args) > 0:
+            await tts.set_voice_name(update)
+        else:
+            await tts.show_voice_name(update)
+
+
+async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if ut.allowed(update):
+        status = await ut.is_active_conversation(update)
+        if status:
+            query = ut.Query(update, context)
+            query.text = await asr.voice_to_text(update)
+            query.include_question = True
+            await query.run()
+
+
 async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if ut.allowed(update):
         status = await ut.is_active_conversation(update)
         if status:
             query = ut.Query(update, context)
             await query.run()
+
+
+async def set_voice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    await tts.set_voice(update)
 
 
 def setup_handlers(app: ApplicationBuilder) -> None:
@@ -53,8 +82,20 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     new_handler = CommandHandler("new", new)
     app.add_handler(new_handler)
 
-    message_handler = MessageHandler(filters.TEXT, message)
+    voice_handler = CommandHandler("voice", voice_setting)
+    app.add_handler(voice_handler)
+
+    message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, message)
     application.add_handler(message_handler)
+
+    voice_message_handler = MessageHandler(
+        filters.VOICE & ~filters.COMMAND & ~filters.TEXT, voice
+    )
+    application.add_handler(voice_message_handler)
+
+    application.add_handler(
+        CallbackQueryHandler(set_voice, pattern="^voice:[A-Za-z0-9_-]*")
+    )
 
 
 async def edge_close(app: ApplicationBuilder) -> None:

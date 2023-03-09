@@ -9,6 +9,8 @@ import json
 import logging
 import re
 
+import tts
+
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot
 from telegram import (
@@ -49,6 +51,11 @@ def set_up() -> None:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
         pass
+
+
+def save_cfg() -> None:
+    with open(FILE["cfg"], "w") as f:
+        json.dump(DATA["cfg"], f, indent=2)
 
 
 def settings(key: str) -> str:
@@ -171,13 +178,15 @@ class Query:
     ) -> None:
         self.update = update
         self.context = context
+        self.text = ""
+        self.include_question = False
+        if update.message.voice == None:
+            self.text = update.effective_message.text
 
     async def run(self) -> None:
         _cid = cid(self.update)
         typing_schedule(self.update, self.context)
-        self._response = await CONV[cid(self.update)].ask(
-            self.update.effective_message.text
-        )
+        self._response = await CONV[cid(self.update)].ask(self.text)
         delete_job(self.context, f"typing_{_cid}")
         item = self._response["item"]
         if item["result"]["value"] == "Success":
@@ -272,6 +281,9 @@ class Query:
                 link = f"<a href='{references[text]}'> [{text}]</a>"
             return link
 
+        logger = logging.getLogger("EdgeGPT")
+        logger.info(message)
+
         text = self.markdown_to_html(message["text"])
         extra = ""
         if "sourceAttributions" in message:
@@ -292,9 +304,16 @@ class Query:
                 sug["text"] for sug in message["suggestedResponses"]
             ] + bt_list
         suggestions = reply_markup(bt_list)
+        if self.include_question:
+            text = f"You: {self.text}\n\n{text}"
         await send(
             self.update,
             self.add_throttling(f"{text}{extra}"),
             reply_markup=suggestions,
             quote=True,
         )
+
+        if settings("reply_voice"):
+            voice = settings("voice")
+            voice_file = await tts.generate_voice(message["text"], voice=voice)
+            await tts.send_voice(self.update, voice=voice_file)

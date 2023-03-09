@@ -1,15 +1,24 @@
 {
   "settings": {
-      "token": "bot_token",
-      "webhook": true,
-      "log_level": "INFO",
-      "ip": "vps_ip",
-      "listen": "0.0.0.0",
-      "port": "vps_port",
-      "cert": "cert_path"
+    "token": "bot_token",
+    "reply_voice": false,
+    "voice": "en-US-AnaNeural",
+    "voice_list": [
+      "en-GB-AlfieNeural",
+      "en-US-AnaNeural",
+      "en-US-CoraNeural",
+      "en-US-JasonNeural"
+    ],
+    "webhook": true,
+    "log_level": "INFO",
+    "ip": "vps_ip",
+    "listen": "0.0.0.0",
+    "port": "vps_port",
+    "cert": "cert_path",
+    "assemblyai_token": "assemblyai_token"
   },
   "chats": {
-      "password": "password_to_enable_bot",
-      "id": ["list", "of", "allowed", "telegram", "ids"]
+    "password": "password_to_enable_bot",
+    "id": ["list", "of", "allowed", "telegram", "ids"]
   }
 }
