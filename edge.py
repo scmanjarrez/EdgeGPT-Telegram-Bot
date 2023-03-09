@@ -19,6 +19,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
     MessageHandler,
+    CallbackQueryHandler,
 )
 
 
@@ -68,6 +69,12 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.run()
 
 
+async def set_voice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    await tts.set_voice(update)
+
+
 def setup_handlers(app: ApplicationBuilder) -> None:
     unlock_handler = CommandHandler("unlock", unlock)
     app.add_handler(unlock_handler)
@@ -85,6 +92,10 @@ def setup_handlers(app: ApplicationBuilder) -> None:
         filters.VOICE & ~filters.COMMAND & ~filters.TEXT, voice
     )
     application.add_handler(voice_message_handler)
+
+    application.add_handler(
+        CallbackQueryHandler(set_voice, pattern="^voice:[A-Za-z0-9_-]*")
+    )
 
 
 async def edge_close(app: ApplicationBuilder) -> None:

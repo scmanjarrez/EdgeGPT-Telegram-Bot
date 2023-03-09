@@ -9,6 +9,8 @@ unofficial API
 Create a bot with [@BotFather](https://t.me/BotFather) and set the following commands:
 ```
 new - Start a new conversation with the bot.
+
+voice - List and set bot voice.
 ```
 
 > Hidden commands:
@@ -37,8 +39,10 @@ new - Start a new conversation with the bot.
     >
     > - **reply_voice**: true to get a voice answer. false to haven't voice answer.
     >
-    > - **voice**: voice name.
+    > - **voice**: voice name. You can use `/voice` command change the setting.
     > More info: [Language and voice support for the Speech service](https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/language-support?tabs=stt)
+    >
+    > - **voice_list**: List of your favorite voices. List of voices that will be listed when you use the /voice command.
     >
     > - **assemblyai_token**: Your AssemblyAI token. It use to ASR.
     > More info: [Supported Languages](https://www.assemblyai.com/docs#supported-languages)

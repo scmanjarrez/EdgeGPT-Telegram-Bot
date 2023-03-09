@@ -4,7 +4,16 @@ import tempfile
 
 import edge_tts
 import utils as ut
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+
+
+def get_keyboard() -> InlineKeyboardMarkup:
+    voice_list = ut.settings("voice_list")
+    keyboard = [
+        [InlineKeyboardButton(voice, callback_data=f"voice:{voice}")]
+        for voice in voice_list
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 
 async def generate_voice(text, voice="zh-CN-YunjianNeural") -> str:
@@ -24,11 +33,26 @@ async def send_voice(update: Update, voice: str) -> None:
 
 
 async def show_voice_name(update: Update) -> None:
-    await update.effective_message.reply_text(ut.settings("voice"))
+    await update.effective_message.reply_text(
+        "Current voice: " + ut.settings("voice"), reply_markup=get_keyboard()
+    )
+
+
+async def set_voice(update: Update) -> None:
+    query = update.callback_query
+    voice = query.data.split("voice:")[1]
+    await query.answer("Change voice")
+    save_voice_name(voice)
+    text = f"Current voice: {voice}"
+    await query.edit_message_text(text=text, reply_markup=get_keyboard())
 
 
 async def set_voice_name(update: Update) -> None:
     voice = update.effective_message.text.split("voice ")[1]
+    save_voice_name(voice)
+    await show_voice_name(update)
+
+
+def save_voice_name(voice: str) -> None:
     ut.DATA["cfg"]["settings"]["voice"] = voice
     ut.save_cfg()
-    await show_voice_name(update)
