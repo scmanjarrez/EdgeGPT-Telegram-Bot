@@ -3,6 +3,7 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
+import html
 import json
 
 import logging
@@ -31,9 +32,11 @@ FILE = {
 DATA = {"cfg": None, "allowed": []}
 CONV = {}
 REF = re.compile(r"\[\^(\d+)\^\]")
-CODE = re.compile(r"(?<!\()(?:```(.*?)```|`(.*?)`)")
-BOLD = re.compile(r"(?:\*\*(.*?)\*\*|__(.*?)__)")
-ITA = re.compile(r"(?<!\()(?:\*(.*?)\*|_(.*?)_)")
+BCODE = re.compile(r"(?<!\()(```+)")
+BCODE_LANG = re.compile(r"((```+)\w*\n*)")
+CODE = re.compile(r"(?<!\()(`+)(.+?)\1(?!\))")
+BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
+ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
 
 
 def set_up() -> None:
@@ -207,22 +210,45 @@ class Query:
                 )
             await send(self.update, msg)
 
+    def code(self, text):
+        offset = -1
+        last = None
+        while True:
+            match = BCODE.search(text, offset + 1)
+            if match is not None:
+                offset = match.start()
+                start = offset
+                last = match.group(0)
+                padding = 0
+                match = BCODE_LANG.match(text[offset:])
+                if match is not None:
+                    padding = len(match.group(0))
+                offset = text.find(last, offset + 1)
+                offset += len(last)
+                end = offset
+                if start == -1 or end - len(last) == -1:
+                    break
+                yield start, end, padding, len(last)
+            else:
+                break
+
     def markdown_to_html(self, text: str) -> str:
+        idx = 0
         code = []
         not_code = []
-        last = 0
-        for itr in CODE.finditer(text):
+        for start, end, spad, epad in self.code(text):
+            not_code.append(text[idx:start])
             code.append(
-                CODE.sub(
-                    "<code>\\1\\2</code>", text[itr.start(0) : itr.end(0)]
-                )
+                f"<code>"
+                f"{html.escape(text[start+spad:end-epad])}"
+                f"</code>"
             )
-            not_code.append(text[last : itr.start(0)])
-            last = itr.end(0)
-        not_code.append(text[last:])
+            idx = end
+        not_code.append(text[idx:])
         for idx, sub in enumerate(not_code):
             new = BOLD.sub("<b>\\1\\2</b>", sub)
             new = ITA.sub("<i>\\1\\2</i>", new)
+            new = CODE.sub("<code>\\2</code>", new)
             not_code[idx] = new
         added = 0
         for idx, cc in enumerate(code, 1):
