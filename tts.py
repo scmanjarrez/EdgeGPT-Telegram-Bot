@@ -9,7 +9,7 @@ from telegram import Update
 
 async def generate_voice(text, voice="zh-CN-YunjianNeural") -> str:
     voice_text = ut.REF.sub("", text)
-    voice_text = ut.BOLD.sub("", voice_text)
+    voice_text = ut.BOLD.sub("\\1\\2", voice_text)
     logging.info(voice_text)
     OUTPUT_FILE = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     communicate = edge_tts.Communicate(voice_text, voice)
