@@ -1,4 +1,4 @@
-FROM python:latest
+FROM python:3.10
 
 RUN apt-get update && apt upgrade -y
 RUN cd /
