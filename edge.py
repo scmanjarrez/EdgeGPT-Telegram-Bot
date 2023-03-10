@@ -7,6 +7,7 @@
 
 import logging
 from pathlib import Path
+import argparse
 
 import asr
 import tts
@@ -108,6 +109,16 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c", type=str, help="configuration file path", default="."
+    )
+    args = parser.parse_args()
+
+    for key, value in ut.FILE.items():
+        ut.FILE[key] = Path(args.c, value).absolute()
+
     if Path(ut.FILE["cfg"]).exists() and Path(ut.FILE["cookies"]).exists():
         ut.set_up()
         application = (

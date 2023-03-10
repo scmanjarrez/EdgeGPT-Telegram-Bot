@@ -14,7 +14,9 @@ async def send_record_voiceing(update: Update) -> None:
     )
 
 
-async def assemblyai_voice_to_text(filename, headers) -> str:
+async def assemblyai_voice_to_text(
+    filename: str, headers: dict, update: Update
+) -> str:
     logger = logging.getLogger("EdgeGPT-ASR")
     text = ""
     with open(filename, "rb") as f:
@@ -45,6 +47,7 @@ async def assemblyai_voice_to_text(filename, headers) -> str:
                             if status == "completed":
                                 text = json_body["text"]
                                 break
+                            await send_record_voiceing(update)
                             await asyncio.sleep(5)
                             waiting_times += 1
     return text
@@ -60,7 +63,7 @@ async def voice_to_text(update: Update) -> str:
     headers = {"authorization": token, "content-type": "application/json"}
 
     await send_record_voiceing(update)
-    text = await assemblyai_voice_to_text(temp_voice.name, headers)
+    text = await assemblyai_voice_to_text(temp_voice.name, headers, update)
     return text
 
 

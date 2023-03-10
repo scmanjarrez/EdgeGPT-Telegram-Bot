@@ -195,8 +195,17 @@ class Query:
             finished = True
             for message in item["messages"]:
                 if message["author"] == "bot":
-                    await self.parse_message(message)
                     finished = False
+                    if "text" in message:
+                        await self.parse_message(message)
+                    else:
+                        await send(
+                            self.update,
+                            self.add_throttling(
+                                message["adaptiveCards"][0]["body"][0]["text"]
+                            ),
+                            quote=True,
+                        )
             if finished:
                 await is_active_conversation(self.update, finished=finished)
                 query = Query(self.update, self.context)
@@ -256,6 +265,14 @@ class Query:
             added += 1
         return "".join(not_code)
 
+    def add_throttling(self, text: str) -> str:
+        throttling = self._response["item"]["throttling"]
+        return (
+            f"{text}\n\n<code>Messages: "
+            f"{throttling['numUserMessagesInConversation']}/"
+            f"{throttling['maxNumUserMessagesInConversation']}</code>"
+        )
+
     async def parse_message(self, message: dict) -> None:
         def generate_link(match: re.Match) -> str:
             text = match.group(1)
@@ -269,7 +286,6 @@ class Query:
 
         text = self.markdown_to_html(message["text"])
         extra = ""
-
         if "sourceAttributions" in message:
             references = {
                 str(idx): ref["seeMoreUrl"]
@@ -291,7 +307,10 @@ class Query:
         if self.include_question:
             text = f"You: {self.text}\n\n{text}"
         await send(
-            self.update, f"{text}{extra}", reply_markup=suggestions, quote=True
+            self.update,
+            self.add_throttling(f"{text}{extra}"),
+            reply_markup=suggestions,
+            quote=True,
         )
 
         if settings("reply_voice"):
