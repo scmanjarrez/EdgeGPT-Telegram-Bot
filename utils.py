@@ -9,6 +9,8 @@ import json
 import logging
 import re
 
+from functools import partial
+
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot
 from telegram import (
@@ -29,12 +31,24 @@ FILE = {
 }
 DATA = {"cfg": None, "allowed": []}
 CONV = {}
+LOG_FILT = ["Removed job", "Added job", "Job", "Running job"]
 REF = re.compile(r"\[\^(\d+)\^\]")
+REF_SP = re.compile(r"(\w+)(\[\^\d+\^\])")
 BCODE = re.compile(r"(?<!\()(```+)")
 BCODE_LANG = re.compile(r"((```+)\w*\n*)")
 CODE = re.compile(r"(?<!\()(`+)(.+?)\1(?!\))")
 BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
+
+
+class NoLog(logging.Filter):
+    def filter(self, record):
+        logged = True
+        for lf in LOG_FILT:
+            if lf in record.getMessage():
+                logged = False
+                break
+        return logged
 
 
 def set_up() -> None:
@@ -165,6 +179,14 @@ def typing_schedule(
     )
 
 
+def generate_link(match: re.Match, references: dict) -> str:
+    text = match.group(1)
+    link = f"[{text}]"
+    if text in references:
+        link = f"<a href='{references[text]}'>[{text}]</a>"
+    return link
+
+
 class Query:
     def __init__(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -233,6 +255,7 @@ class Query:
                 break
 
     def markdown_to_html(self, text: str) -> str:
+        text = REF_SP.sub("\\1 \\2", text)
         idx = 0
         code = []
         not_code = []
@@ -265,13 +288,6 @@ class Query:
         )
 
     async def parse_message(self, message: dict) -> None:
-        def generate_link(match: re.Match) -> str:
-            text = match.group(1)
-            link = f" [{text}]"
-            if text in references:
-                link = f"<a href='{references[text]}'> [{text}]</a>"
-            return link
-
         text = self.markdown_to_html(message["text"])
         extra = ""
         if "sourceAttributions" in message:
@@ -285,7 +301,7 @@ class Query:
             ]
             if references:
                 extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
-            text = REF.sub(generate_link, text)
+            text = REF.sub(partial(generate_link, references=references), text)
         bt_list = ["/new"]
         if "suggestedResponses" in message and not is_group(self.update):
             bt_list = [
