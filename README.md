@@ -67,6 +67,14 @@ new - Start a new conversation with the bot.
     > **Note:** If you run the bot in port 80, it may be needed to run the bot as
     > superuser (**sudo**).
 
+- Use Docker
+
+Install Docker and cocker-compose, put all config file to `./edgebot` and put `docker-compose.yml` in current folder.
+
+`docker-compose up -d`
+
+> **Note:** Only support amd64 and arm64.
+
 # Contributing
 Happy to see you willing to make the project better. In order to make a contribution,
 please respect the following format:
