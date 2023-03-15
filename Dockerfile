@@ -1,6 +1,7 @@
-FROM python:3.8.16-alpine
+FROM python:3.8.10-alpine
 
-COPY . /edgebot
-WORKDIR /edgebot
+COPY . /edgegpt
+WORKDIR /edgegpt
+RUN apk add build-base
 RUN pip install -r requirements.txt
 CMD ["python", "edge.py"]
