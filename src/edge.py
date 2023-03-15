@@ -57,7 +57,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif query.data.startswith("response"):
             args = query.data.split("_")
             await cmds.message(update, context, args[-1])
-        elif query.data == "tts_menu":
+        elif query.data == "tts":
             await cmds.tts(update, context)
         elif query.data == "tts_menu":
             await cmds.tts_menu(update, context)

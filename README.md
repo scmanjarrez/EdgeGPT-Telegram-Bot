@@ -96,7 +96,7 @@ according to your configuration.
 
 - Run the bot.
   ```bash
-  $ python edge.py
+  $ python src/edge.py
   ```
 
   > **Note:** If you run the bot in port 80, it may be needed to run the bot as

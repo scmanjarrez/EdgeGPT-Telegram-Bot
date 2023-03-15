@@ -4,4 +4,4 @@ COPY . /edgegpt
 WORKDIR /edgegpt
 RUN apk add build-base
 RUN pip install -r requirements.txt
-CMD ["python", "edge.py"]
+CMD ["python", "src/edge.py"]
