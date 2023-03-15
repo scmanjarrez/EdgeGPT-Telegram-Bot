@@ -127,7 +127,7 @@ please respect the following format:
 > extend-ignore = E203
 > ```
 
-### VSCode project settings
+## VSCode project settings
 VSCode should have the following settings in settings.json:
 ```
 {
@@ -146,6 +146,11 @@ VSCode should have the following settings in settings.json:
 >     "--ignore=E203",
 > ],
 > ```
+
+## Contributors
+<a href="https://github.com/scmanjarrez/Edge-GPT-Telegram-Bot/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=scmanjarrez/Edge-GPT-Telegram-Bot"/>
+</a>
 
 # License
     Copyright (c) 2023 scmanjarrez. All rights reserved.

@@ -18,7 +18,7 @@ def setup_db() -> None:
             cur.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS users (
-                    cid TEXT PRIMARY KEY,
+                    cid INTEGER PRIMARY KEY,
                     voice TEXT DEFAULT 'en-US-AnaNeural',
                     tts INTEGER DEFAULT -1,
                     style TEXT DEFAULT 'balanced'

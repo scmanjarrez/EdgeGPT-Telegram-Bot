@@ -3,19 +3,24 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
+import asyncio
 import html
+import io
 import json
 
 import logging
 import re
-import io
-
-import edge_tts
 import traceback
 from functools import partial
 from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
+
+import aiohttp
 
 import database as db
+
+import edge_tts
+from aiohttp.web import HTTPException
 
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot, ConversationStyle
@@ -23,11 +28,13 @@ from telegram import (
     constants,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    Message,
     Update,
 )
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
+
 
 PATH = {}
 DATA = {"config": None, "tts": None, "msg": {}}
@@ -41,6 +48,7 @@ CODE = re.compile(r"(?<!\()(`+)(.+?)\1(?!\))")
 BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
 DEBUG = False
+ASR_API = "https://api.assemblyai.com/v2"
 
 
 class NoLog(logging.Filter):
@@ -58,7 +66,7 @@ def rename_files() -> None:
     tmp = cwd.joinpath(".allowed.txt")
     if tmp.exists():
         for _cid in tmp.read_text().split():
-            db.add_user(_cid)
+            db.add_user(int(_cid))
         tmp.unlink()
     cfg = Path(PATH["dir"])
     for k, v in PATH.items():
@@ -104,11 +112,11 @@ def is_group(update: Update) -> bool:
     return update.effective_chat.id < 0
 
 
-def button(buttons):
+def button(buttons) -> List[InlineKeyboardButton]:
     return [InlineKeyboardButton(bt[0], callback_data=bt[1]) for bt in buttons]
 
 
-def markup(buttons: list) -> InlineKeyboardMarkup:
+def markup(buttons: List[List[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
@@ -118,17 +126,17 @@ def button_query(update: Update, index: str) -> str:
             return kb.text
 
 
-def chunk(lst: list, size: int = 6) -> list:
+def chunk(lst: List[str], size: int = 6) -> List[str]:
     for idx in range(0, len(lst), size):
         yield lst[idx : idx + size]
 
 
-async def list_voices() -> dict:
+async def list_voices() -> Dict[str, Dict[str, List[str]]]:
     if DATA["tts"] is None:
         DATA["tts"] = {}
         voices = await edge_tts.list_voices()
         for vc in voices:
-            lang = vc["Locale"].split('-')[0]
+            lang = vc["Locale"].split("-")[0]
             gend = vc["Gender"]
             if lang not in DATA["tts"]:
                 DATA["tts"][lang] = {}
@@ -167,7 +175,7 @@ async def send(
     text: str,
     quote: bool = False,
     reply_markup: InlineKeyboardMarkup = None,
-) -> None:
+) -> Message:
     return await update.effective_message.reply_html(
         text,
         disable_web_page_preview=True,
@@ -177,11 +185,11 @@ async def send(
 
 
 async def edit(
-    update: Update, msg: str, reply_markup: InlineKeyboardMarkup = None
+    update: Update, text: str, reply_markup: InlineKeyboardMarkup = None
 ) -> None:
     try:
         await update.callback_query.edit_message_text(
-            msg,
+            text,
             ParseMode.HTML,
             reply_markup=reply_markup,
             disable_web_page_preview=True,
@@ -219,23 +227,28 @@ async def is_active_conversation(
                     "Starting new conversation. "
                     f"{'Ask me anything... ' if new else ''}"
                     f"{group if is_group(update) else ''}"
-                )
+                ),
             )
     return True
 
 
-async def send_typing(context: ContextTypes.DEFAULT_TYPE) -> None:
-    await context.bot.send_chat_action(
-        context.job.chat_id, constants.ChatAction.TYPING
-    )
+async def send_action(context: ContextTypes.DEFAULT_TYPE) -> None:
+    await context.bot.send_chat_action(context.job.chat_id, context.job.data)
 
 
-def typing_schedule(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+def action_schedule(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    action: constants.ChatAction,
 ) -> None:
     _cid = cid(update)
     context.job_queue.run_repeating(
-        send_typing, 7, first=1, chat_id=_cid, name=f"typing_{_cid}"
+        send_action,
+        7,
+        first=1,
+        chat_id=_cid,
+        data=action,
+        name=f"{action.name}_{_cid}",
     )
 
 
@@ -262,11 +275,13 @@ class Query:
             self.text = update.effective_message.text
 
     async def run(self) -> None:
-        typing_schedule(self.update, self.context)
+        action_schedule(self.update, self.context, constants.ChatAction.TYPING)
         self._response = await CONV[self.cid].ask(
             self.text, getattr(ConversationStyle, db.style(self.cid))
         )
-        delete_job(self.context, f"typing_{self.cid}")
+        delete_job(
+            self.context, f"{constants.ChatAction.TYPING.name}_{self.cid}"
+        )
         item = self._response["item"]
         if item["result"]["value"] == "Success":
             self.expiration = item["conversationExpiryTime"]
@@ -298,7 +313,7 @@ class Query:
                 )
             await send(self.update, msg)
 
-    def code(self, text):
+    def code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
         offset = -1
         last = None
         while True:
@@ -353,20 +368,27 @@ class Query:
             f"{throttling['maxNumUserMessagesInConversation']}</code>"
         )
 
-    async def tts(self, text: str) -> io.BytesIO:
+    async def tts(self, text: str) -> None:
+        action_schedule(
+            self.update, self.context, constants.ChatAction.RECORD_VOICE
+        )
         text = REF.sub("", text)
         text = BOLD.sub("\\1\\2", text)
         if DEBUG:
-            logging.info(text)
+            logging.getLogger("EdgeGPT - TTS").info(f"\nMessage:\n{text}\n\n")
         comm = edge_tts.Communicate(text, db.voice(self.cid))
         with io.BytesIO() as out:
             async for message in comm.stream():
                 if message["type"] == "audio":
                     out.write(message["data"])
             out.seek(0)
+            delete_job(
+                self.context,
+                f"{constants.ChatAction.RECORD_VOICE.name}_{self.cid}",
+            )
             await self.update.effective_message.reply_voice(out)
 
-    async def parse_message(self, message: dict) -> None:
+    async def parse_message(self, message: Dict[str, Any]) -> None:
         text = self.markdown_to_html(message["text"])
         extra = ""
         if "sourceAttributions" in message:
@@ -402,3 +424,35 @@ class Query:
 
         if tts:
             await self.tts(message["text"])
+
+
+async def automatic_speech_recognition(data: bytearray) -> str:
+    text = "Could not connect to AssemblyAI API. Try again later."
+    try:
+        async with aiohttp.ClientSession(
+            headers={"authorization": settings("assemblyai_token")}
+        ) as session:
+            async with session.post(f"{ASR_API}/upload", data=data) as req:
+                resp = await req.json()
+                upload = {"audio_url": resp["upload_url"]}
+            async with session.post(
+                f"{ASR_API}/transcript", json=upload
+            ) as req:
+                resp = await req.json()
+                upload_id = resp["id"]
+                status = resp["status"]
+                while status not in ("completed", "error"):
+                    async with session.get(
+                        f"{ASR_API}/transcript/{upload_id}"
+                    ) as req:
+                        resp = await req.json()
+                        status = resp["status"]
+                        if DEBUG:
+                            logging.getLogger("EdgeGPT-ASR").info(
+                                f"{upload_id}: {status}"
+                            )
+                        await asyncio.sleep(5)
+                text = resp["text"]
+    except HTTPException:
+        pass
+    return text

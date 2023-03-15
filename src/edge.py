@@ -76,14 +76,10 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     settings_handler = CommandHandler("settings", cmds.settings)
     app.add_handler(settings_handler)
 
-    voice_message_handler = MessageHandler(
-        filters.VOICE, cmds.voice
-    )
+    voice_message_handler = MessageHandler(filters.VOICE, cmds.voice)
     app.add_handler(voice_message_handler)
 
-    message_handler = MessageHandler(
-        filters.TEXT, cmds.message
-    )
+    message_handler = MessageHandler(filters.TEXT, cmds.message)
     app.add_handler(message_handler)
 
     app.add_handler(CallbackQueryHandler(button_handler))
