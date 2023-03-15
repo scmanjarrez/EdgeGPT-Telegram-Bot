@@ -91,7 +91,7 @@ async def edge_close(app: ApplicationBuilder) -> None:
 
 
 def setup_parser() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog="edge-gpt-telegram-bot")
     parser.add_argument(
         "-d",
         "--dir",
@@ -121,11 +121,15 @@ def setup_parser() -> None:
         action="store_true",
         help="Log debug messages, i.e. EdgeGPT responses, tts recognition...",
     )
+    parser.add_argument(
+        "--version",
+        action="version", version="%(prog)s v0.1.0"
+    )
     args = parser.parse_args()
     for k, v in vars(args).items():
         if k == "debug":
             ut.DEBUG = v
-        else:
+        elif k != "version":
             ut.PATH[k] = v
 
 

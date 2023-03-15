@@ -1,0 +1,59 @@
+name: 🐛 Report a bug
+description: Create a bug report to help improve Edge-GPT-Telegram-Bot
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Thank you for wanting to report a bug in Edge-GPT-Telegram-Bot!**
+
+          * First, be sure you are running the [latest version of the Edge-GPT-Telegram-Bot](https://github.com/scmanjarrez/Edge-GPT-Telegram-Bot/releases).
+          * You will also need to run the bot with the argument `--debug`
+            * `python src/edge.py --debug`
+            * `docker run ... --debug`
+          * Finally, when submitting a bug report, you **must** include the traceback. This allows the developers to examine and debug the error.
+
+        Thank you for your help!
+  - type: textarea
+    attributes:
+      label: The problem
+      description: >-
+        Describe the issue you are experiencing here. Tell us what you were trying to do
+        step by step, and what happened that you did not expect.
+
+        Provide a clear and concise description of what the problem is and include as many
+        details as possible.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        ## Environment
+  - type: input
+    attributes:
+      label: Version of Edge-GPT-Telegram-Bot
+      description: Can be found with `python src/edge.py --version`.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Operating system running Edge-GPT-Telegram-Bot
+      description: >-
+        Linux, Windows, MacOS, something else? With version please?
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Running on your machine? Running on docker?
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        ## Traceback
+  - type: textarea
+    attributes:
+      label: Additional information & file uploads
