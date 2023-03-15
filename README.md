@@ -104,15 +104,21 @@ according to your configuration.
   > superuser (**sudo**)
 
 # Docker
+## Manual build
 Build the image and bind `config` directory in the container
 ```bash
 $ docker build . -t edgegpt-telegram-bot --rm
 $ docker run -d -it --name edgegpt -v ./config:/edgegpt/config edgegpt-telegram-bot
 ```
 
+## Dockerhub image
+```bash
+$ docker run -d -it --name edgegpt -v ./config:/edgegpt/config scmanjarrez/edgegpt-telegram-bot
+```
+
 > docker-compose.yml file provided.
 > ```bash
-> $ docker compose -d
+> $ docker compose up -d
 > ```
 
 # Contributing

@@ -1,9 +1,7 @@
-version: "3.9"
+version: '3'
 services:
-  edgebot:
-    restart: always
-    image: hdcola/edgebot:latest
+  edgegpt-telegram-bot:
+    image: scmanjarrez/edgegpt-telegram-bot:latest
+    restart: unless-stopped
     volumes:
-      - "./edgebot:/conf"
-    ports:
-      - "8080:8080"
+      - ./config:/edgegpt/config
