@@ -9,6 +9,7 @@ unofficial API
 - [Docker](#docker)
 - [Contributing](#contributing)
   - [VSCode project settings](#vscode-project-settings)
+  - [Contributors](#contributors)
 - [License](#license)
 
 # Requirements
@@ -109,13 +110,10 @@ $ docker build . -t edgegpt-telegram-bot --rm
 $ docker run -d -it --name edgegpt -v ./config:/edgegpt/config edgegpt-telegram-bot
 ```
 
-- Use Docker
-
-Install Docker and cocker-compose, put all config file to `./edgebot` and put `docker-compose.yml` in current folder.
-
-`docker-compose up -d`
-
-> **Note:** Only support amd64 and arm64.
+> docker-compose.yml file provided.
+> ```bash
+> $ docker compose -d
+> ```
 
 # Contributing
 Happy to see you willing to make the project better. In order to make a contribution,
