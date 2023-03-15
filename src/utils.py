@@ -3,33 +3,41 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
+import asyncio
 import html
+import io
 import json
 
 import logging
 import re
-
+import traceback
 from functools import partial
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
+
+import aiohttp
+
+import database as db
+
+import edge_tts
+from aiohttp.web import HTTPException
 
 from dateutil.parser import isoparse
-from EdgeGPT import Chatbot
+from EdgeGPT import Chatbot, ConversationStyle
 from telegram import (
     constants,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
+    Message,
     Update,
 )
+from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-FILE = {
-    "cfg": ".config.json",
-    "cookies": ".cookies.json",
-    "allowed": ".allowed.txt",
-}
-DATA = {"cfg": None, "allowed": []}
+
+PATH = {}
+DATA = {"config": None, "tts": None, "msg": {}}
 CONV = {}
 LOG_FILT = ["Removed job", "Added job", "Job", "Running job"]
 REF = re.compile(r"\[\^(\d+)\^\]")
@@ -39,6 +47,8 @@ BCODE_LANG = re.compile(r"((```+)\w*\n*)")
 CODE = re.compile(r"(?<!\()(`+)(.+?)\1(?!\))")
 BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
+DEBUG = False
+ASR_API = "https://api.assemblyai.com/v2"
 
 
 class NoLog(logging.Filter):
@@ -51,14 +61,27 @@ class NoLog(logging.Filter):
         return logged
 
 
+def rename_files() -> None:
+    cwd = Path(".")
+    tmp = cwd.joinpath(".allowed.txt")
+    if tmp.exists():
+        for _cid in tmp.read_text().split():
+            db.add_user(int(_cid))
+        tmp.unlink()
+    cfg = Path(PATH["dir"])
+    for k, v in PATH.items():
+        if k not in ("dir", "database"):
+            tmp = cwd.joinpath(f".{v}")
+            if tmp.exists():
+                tmp.rename(cfg.joinpath(v))
+
+
 def set_up() -> None:
-    with open(FILE["cfg"]) as f:
-        DATA["cfg"] = json.load(f)
-    try:
-        with open(FILE["allowed"]) as f:
-            DATA["allowed"] = [int(_cid) for _cid in f.read().splitlines()]
-    except FileNotFoundError:
-        DATA["allowed"] = []
+    Path(PATH["dir"]).mkdir(exist_ok=True)
+    db.setup_db()
+    rename_files()
+    with open(path("config")) as f:
+        DATA["config"] = json.load(f)
     try:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
@@ -66,40 +89,61 @@ def set_up() -> None:
 
 
 def settings(key: str) -> str:
-    return DATA["cfg"]["settings"][key]
+    return DATA["config"]["settings"][key]
+
+
+def path(key: str) -> str:
+    return Path(PATH["dir"]).joinpath(PATH[key])
+
+
+def exists(key: str) -> bool:
+    return Path(".").joinpath(f".{PATH[key]}").exists() or path(key).exists()
 
 
 def passwd_correct(passwd: str) -> bool:
-    return passwd == DATA["cfg"]["chats"]["password"]
-
-
-def allowed(update: Update) -> bool:
-    _cid = cid(update)
-    return _cid in DATA["allowed"] or _cid in DATA["cfg"]["chats"]["id"]
+    return passwd == DATA["config"]["chats"]["password"]
 
 
 def cid(update: Update) -> int:
     return update.effective_chat.id
 
 
-def unlock(chat_id: int) -> None:
-    DATA["allowed"].append(chat_id)
-    with open(FILE["allowed"], "a") as f:
-        f.write(f"{chat_id}\n")
-
-
 def is_group(update: Update) -> bool:
     return update.effective_chat.id < 0
 
 
-def reply_markup(buttons: list) -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([[KeyboardButton(bt)] for bt in buttons])
+def button(buttons) -> List[InlineKeyboardButton]:
+    return [InlineKeyboardButton(bt[0], callback_data=bt[1]) for bt in buttons]
 
 
-def inline_markup(buttons: list) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(bt[0], bt[1])] for bt in buttons]
-    )
+def markup(buttons: List[List[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(buttons)
+
+
+def button_query(update: Update, index: str) -> str:
+    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
+        if kb.callback_data == f"response_{index}":
+            return kb.text
+
+
+def chunk(lst: List[str], size: int = 6) -> List[str]:
+    for idx in range(0, len(lst), size):
+        yield lst[idx : idx + size]
+
+
+async def list_voices() -> Dict[str, Dict[str, List[str]]]:
+    if DATA["tts"] is None:
+        DATA["tts"] = {}
+        voices = await edge_tts.list_voices()
+        for vc in voices:
+            lang = vc["Locale"].split("-")[0]
+            gend = vc["Gender"]
+            if lang not in DATA["tts"]:
+                DATA["tts"][lang] = {}
+            if gend not in DATA["tts"][lang]:
+                DATA["tts"][lang][gend] = []
+            DATA["tts"][lang][gend].append(vc["ShortName"])
+    return DATA["tts"]
 
 
 async def _remove_conversation(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -126,13 +170,38 @@ def delete_conversation(
     )
 
 
-async def send(update: Update, text, quote=False, reply_markup=None) -> None:
+async def send(
+    update: Update,
+    text: str,
+    quote: bool = False,
+    reply_markup: InlineKeyboardMarkup = None,
+) -> Message:
     return await update.effective_message.reply_html(
         text,
         disable_web_page_preview=True,
         quote=quote,
         reply_markup=reply_markup,
     )
+
+
+async def edit(
+    update: Update, text: str, reply_markup: InlineKeyboardMarkup = None
+) -> None:
+    try:
+        await update.callback_query.edit_message_text(
+            text,
+            ParseMode.HTML,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+        )
+    except BadRequest as br:
+        if not str(br).startswith("Message is not modified:"):
+            print(
+                f"***  Exception caught in edit "
+                f"({update.effective_message.chat.id}): ",
+                br,
+            )
+            traceback.print_stack()
 
 
 async def is_active_conversation(
@@ -143,7 +212,7 @@ async def is_active_conversation(
         if _cid in CONV:
             await CONV[_cid].close()
         try:
-            CONV[_cid] = Chatbot(cookiePath=FILE["cookies"])
+            CONV[_cid] = Chatbot(cookiePath=path("cookies"))
         except Exception as e:
             logging.getLogger("EdgeGPT").error(e)
             await send(update, "EdgeGPT API not available. Try again later.")
@@ -159,23 +228,27 @@ async def is_active_conversation(
                     f"{'Ask me anything... ' if new else ''}"
                     f"{group if is_group(update) else ''}"
                 ),
-                reply_markup=ReplyKeyboardRemove(),
             )
     return True
 
 
-async def send_typing(context: ContextTypes.DEFAULT_TYPE) -> None:
-    await context.bot.send_chat_action(
-        context.job.chat_id, constants.ChatAction.TYPING
-    )
+async def send_action(context: ContextTypes.DEFAULT_TYPE) -> None:
+    await context.bot.send_chat_action(context.job.chat_id, context.job.data)
 
 
-def typing_schedule(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
+def action_schedule(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    action: constants.ChatAction,
 ) -> None:
     _cid = cid(update)
     context.job_queue.run_repeating(
-        send_typing, 7, first=1, chat_id=_cid, name=f"typing_{_cid}"
+        send_action,
+        7,
+        first=1,
+        chat_id=_cid,
+        data=action,
+        name=f"{action.name}_{_cid}",
     )
 
 
@@ -189,22 +262,30 @@ def generate_link(match: re.Match, references: dict) -> str:
 
 class Query:
     def __init__(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str = None,
     ) -> None:
         self.update = update
         self.context = context
+        self.text = text
+        self.cid = cid(self.update)
+        if self.text is None:
+            self.text = update.effective_message.text
 
     async def run(self) -> None:
-        _cid = cid(self.update)
-        typing_schedule(self.update, self.context)
-        self._response = await CONV[cid(self.update)].ask(
-            self.update.effective_message.text
+        action_schedule(self.update, self.context, constants.ChatAction.TYPING)
+        self._response = await CONV[self.cid].ask(
+            self.text, getattr(ConversationStyle, db.style(self.cid))
         )
-        delete_job(self.context, f"typing_{_cid}")
+        delete_job(
+            self.context, f"{constants.ChatAction.TYPING.name}_{self.cid}"
+        )
         item = self._response["item"]
         if item["result"]["value"] == "Success":
             self.expiration = item["conversationExpiryTime"]
-            delete_conversation(self.context, str(_cid), self.expiration)
+            delete_conversation(self.context, str(self.cid), self.expiration)
             finished = True
             for message in item["messages"]:
                 if message["author"] == "bot":
@@ -232,7 +313,7 @@ class Query:
                 )
             await send(self.update, msg)
 
-    def code(self, text):
+    def code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
         offset = -1
         last = None
         while True:
@@ -287,7 +368,27 @@ class Query:
             f"{throttling['maxNumUserMessagesInConversation']}</code>"
         )
 
-    async def parse_message(self, message: dict) -> None:
+    async def tts(self, text: str) -> None:
+        action_schedule(
+            self.update, self.context, constants.ChatAction.RECORD_VOICE
+        )
+        text = REF.sub("", text)
+        text = BOLD.sub("\\1\\2", text)
+        if DEBUG:
+            logging.getLogger("EdgeGPT - TTS").info(f"\nMessage:\n{text}\n\n")
+        comm = edge_tts.Communicate(text, db.voice(self.cid))
+        with io.BytesIO() as out:
+            async for message in comm.stream():
+                if message["type"] == "audio":
+                    out.write(message["data"])
+            out.seek(0)
+            delete_job(
+                self.context,
+                f"{constants.ChatAction.RECORD_VOICE.name}_{self.cid}",
+            )
+            await self.update.effective_message.reply_voice(out)
+
+    async def parse_message(self, message: Dict[str, Any]) -> None:
         text = self.markdown_to_html(message["text"])
         extra = ""
         if "sourceAttributions" in message:
@@ -302,15 +403,56 @@ class Query:
             if references:
                 extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
             text = REF.sub(partial(generate_link, references=references), text)
-        bt_list = ["/new"]
+        text = f"<b>Bing</b>: {text}"
+        tts = False
+        if db.tts(self.cid) == 1:
+            tts = True
+        bt_lst = [button([("🆕 New topic", "new")])]
+        if not tts:
+            bt_lst.insert(0, button([("🗣 Text-to-Speech", "tts")]))
+            DATA["msg"][self.cid] = message["text"]
         if "suggestedResponses" in message and not is_group(self.update):
-            bt_list = [
-                sug["text"] for sug in message["suggestedResponses"]
-            ] + bt_list
-        suggestions = reply_markup(bt_list)
+            for idx, sug in enumerate(message["suggestedResponses"]):
+                bt_lst.insert(idx, button([(sug["text"], f"response_{idx}")]))
+        suggestions = markup(bt_lst)
+        question = f"<b>You</b>: {self.text}\n\n"
         await send(
             self.update,
-            self.add_throttling(f"{text}{extra}"),
+            self.add_throttling(f"{question}{text}{extra}"),
             reply_markup=suggestions,
-            quote=True,
         )
+
+        if tts:
+            await self.tts(message["text"])
+
+
+async def automatic_speech_recognition(data: bytearray) -> str:
+    text = "Could not connect to AssemblyAI API. Try again later."
+    try:
+        async with aiohttp.ClientSession(
+            headers={"authorization": settings("assemblyai_token")}
+        ) as session:
+            async with session.post(f"{ASR_API}/upload", data=data) as req:
+                resp = await req.json()
+                upload = {"audio_url": resp["upload_url"]}
+            async with session.post(
+                f"{ASR_API}/transcript", json=upload
+            ) as req:
+                resp = await req.json()
+                upload_id = resp["id"]
+                status = resp["status"]
+                while status not in ("completed", "error"):
+                    async with session.get(
+                        f"{ASR_API}/transcript/{upload_id}"
+                    ) as req:
+                        resp = await req.json()
+                        status = resp["status"]
+                        if DEBUG:
+                            logging.getLogger("EdgeGPT-ASR").info(
+                                f"{upload_id}: {status}"
+                            )
+                        await asyncio.sleep(5)
+                text = resp["text"]
+    except HTTPException:
+        pass
+    return text
