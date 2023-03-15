@@ -1,0 +1,9 @@
+version: "3.9"
+services:
+  edgebot:
+    restart: always
+    image: hdcola/edgebot:latest
+    volumes:
+      - "./edgebot:/conf"
+    ports:
+      - "8080:8080"
