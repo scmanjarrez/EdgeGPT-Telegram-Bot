@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT
+
+# Copyright (c) 2023 hdcola, scmanjarrez. All rights reserved.
+# This work is licensed under the terms of the MIT license.
+
 import asyncio
 import logging
 import tempfile

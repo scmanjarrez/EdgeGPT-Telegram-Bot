@@ -8,91 +8,134 @@ import json
 
 import logging
 import re
+import io
 
-import tts
+import edge_tts
+import traceback
+from functools import partial
+from pathlib import Path
+
+import database as db
 
 from dateutil.parser import isoparse
-from EdgeGPT import Chatbot
+from EdgeGPT import Chatbot, ConversationStyle
 from telegram import (
     constants,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     Update,
 )
+from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-FILE = {
-    "cfg": ".config.json",
-    "cookies": ".cookies.json",
-    "allowed": ".allowed.txt",
-}
-DATA = {"cfg": None, "allowed": []}
+PATH = {}
+DATA = {"config": None, "tts": None, "msg": {}}
 CONV = {}
+LOG_FILT = ["Removed job", "Added job", "Job", "Running job"]
 REF = re.compile(r"\[\^(\d+)\^\]")
+REF_SP = re.compile(r"(\w+)(\[\^\d+\^\])")
 BCODE = re.compile(r"(?<!\()(```+)")
 BCODE_LANG = re.compile(r"((```+)\w*\n*)")
 CODE = re.compile(r"(?<!\()(`+)(.+?)\1(?!\))")
 BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
+DEBUG = False
+
+
+class NoLog(logging.Filter):
+    def filter(self, record):
+        logged = True
+        for lf in LOG_FILT:
+            if lf in record.getMessage():
+                logged = False
+                break
+        return logged
+
+
+def rename_files() -> None:
+    cwd = Path(".")
+    tmp = cwd.joinpath(".allowed.txt")
+    if tmp.exists():
+        for _cid in tmp.read_text().split():
+            db.add_user(_cid)
+        tmp.unlink()
+    cfg = Path(PATH["dir"])
+    for k, v in PATH.items():
+        if k not in ("dir", "database"):
+            tmp = cwd.joinpath(f".{v}")
+            if tmp.exists():
+                tmp.rename(cfg.joinpath(v))
 
 
 def set_up() -> None:
-    with open(FILE["cfg"]) as f:
-        DATA["cfg"] = json.load(f)
-    try:
-        with open(FILE["allowed"]) as f:
-            DATA["allowed"] = [int(_cid) for _cid in f.read().splitlines()]
-    except FileNotFoundError:
-        DATA["allowed"] = []
+    Path(PATH["dir"]).mkdir(exist_ok=True)
+    db.setup_db()
+    rename_files()
+    with open(path("config")) as f:
+        DATA["config"] = json.load(f)
     try:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
         pass
 
 
-def save_cfg() -> None:
-    with open(FILE["cfg"], "w") as f:
-        json.dump(DATA["cfg"], f, indent=2)
-
-
 def settings(key: str) -> str:
-    return DATA["cfg"]["settings"][key]
+    return DATA["config"]["settings"][key]
+
+
+def path(key: str) -> str:
+    return Path(PATH["dir"]).joinpath(PATH[key])
+
+
+def exists(key: str) -> bool:
+    return Path(".").joinpath(f".{PATH[key]}").exists() or path(key).exists()
 
 
 def passwd_correct(passwd: str) -> bool:
-    return passwd == DATA["cfg"]["chats"]["password"]
-
-
-def allowed(update: Update) -> bool:
-    _cid = cid(update)
-    return _cid in DATA["allowed"] or _cid in DATA["cfg"]["chats"]["id"]
+    return passwd == DATA["config"]["chats"]["password"]
 
 
 def cid(update: Update) -> int:
     return update.effective_chat.id
 
 
-def unlock(chat_id: int) -> None:
-    DATA["allowed"].append(chat_id)
-    with open(FILE["allowed"], "a") as f:
-        f.write(f"{chat_id}\n")
-
-
 def is_group(update: Update) -> bool:
     return update.effective_chat.id < 0
 
 
-def reply_markup(buttons: list) -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup([[KeyboardButton(bt)] for bt in buttons])
+def button(buttons):
+    return [InlineKeyboardButton(bt[0], callback_data=bt[1]) for bt in buttons]
 
 
-def inline_markup(buttons: list) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(bt[0], bt[1])] for bt in buttons]
-    )
+def markup(buttons: list) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(buttons)
+
+
+def button_query(update: Update, index: str) -> str:
+    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
+        if kb.callback_data == f"response_{index}":
+            return kb.text
+
+
+def chunk(lst: list, size: int = 6) -> list:
+    for idx in range(0, len(lst), size):
+        yield lst[idx : idx + size]
+
+
+async def list_voices() -> dict:
+    if DATA["tts"] is None:
+        DATA["tts"] = {}
+        voices = await edge_tts.list_voices()
+        for vc in voices:
+            lang = vc["Locale"].split('-')[0]
+            gend = vc["Gender"]
+            if lang not in DATA["tts"]:
+                DATA["tts"][lang] = {}
+            if gend not in DATA["tts"][lang]:
+                DATA["tts"][lang][gend] = []
+            DATA["tts"][lang][gend].append(vc["ShortName"])
+    return DATA["tts"]
 
 
 async def _remove_conversation(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -119,13 +162,38 @@ def delete_conversation(
     )
 
 
-async def send(update: Update, text, quote=False, reply_markup=None) -> None:
+async def send(
+    update: Update,
+    text: str,
+    quote: bool = False,
+    reply_markup: InlineKeyboardMarkup = None,
+) -> None:
     return await update.effective_message.reply_html(
         text,
         disable_web_page_preview=True,
         quote=quote,
         reply_markup=reply_markup,
     )
+
+
+async def edit(
+    update: Update, msg: str, reply_markup: InlineKeyboardMarkup = None
+) -> None:
+    try:
+        await update.callback_query.edit_message_text(
+            msg,
+            ParseMode.HTML,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+        )
+    except BadRequest as br:
+        if not str(br).startswith("Message is not modified:"):
+            print(
+                f"***  Exception caught in edit "
+                f"({update.effective_message.chat.id}): ",
+                br,
+            )
+            traceback.print_stack()
 
 
 async def is_active_conversation(
@@ -136,7 +204,7 @@ async def is_active_conversation(
         if _cid in CONV:
             await CONV[_cid].close()
         try:
-            CONV[_cid] = Chatbot(cookiePath=FILE["cookies"])
+            CONV[_cid] = Chatbot(cookiePath=path("cookies"))
         except Exception as e:
             logging.getLogger("EdgeGPT").error(e)
             await send(update, "EdgeGPT API not available. Try again later.")
@@ -151,8 +219,7 @@ async def is_active_conversation(
                     "Starting new conversation. "
                     f"{'Ask me anything... ' if new else ''}"
                     f"{group if is_group(update) else ''}"
-                ),
-                reply_markup=ReplyKeyboardRemove(),
+                )
             )
     return True
 
@@ -172,26 +239,38 @@ def typing_schedule(
     )
 
 
+def generate_link(match: re.Match, references: dict) -> str:
+    text = match.group(1)
+    link = f"[{text}]"
+    if text in references:
+        link = f"<a href='{references[text]}'>[{text}]</a>"
+    return link
+
+
 class Query:
     def __init__(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str = None,
     ) -> None:
         self.update = update
         self.context = context
-        self.text = ""
-        self.include_question = False
-        if update.message.voice == None:
+        self.text = text
+        self.cid = cid(self.update)
+        if self.text is None:
             self.text = update.effective_message.text
 
     async def run(self) -> None:
-        _cid = cid(self.update)
         typing_schedule(self.update, self.context)
-        self._response = await CONV[cid(self.update)].ask(self.text)
-        delete_job(self.context, f"typing_{_cid}")
+        self._response = await CONV[self.cid].ask(
+            self.text, getattr(ConversationStyle, db.style(self.cid))
+        )
+        delete_job(self.context, f"typing_{self.cid}")
         item = self._response["item"]
         if item["result"]["value"] == "Success":
             self.expiration = item["conversationExpiryTime"]
-            delete_conversation(self.context, str(_cid), self.expiration)
+            delete_conversation(self.context, str(self.cid), self.expiration)
             finished = True
             for message in item["messages"]:
                 if message["author"] == "bot":
@@ -242,6 +321,7 @@ class Query:
                 break
 
     def markdown_to_html(self, text: str) -> str:
+        text = REF_SP.sub("\\1 \\2", text)
         idx = 0
         code = []
         not_code = []
@@ -273,17 +353,20 @@ class Query:
             f"{throttling['maxNumUserMessagesInConversation']}</code>"
         )
 
+    async def tts(self, text: str) -> io.BytesIO:
+        text = REF.sub("", text)
+        text = BOLD.sub("\\1\\2", text)
+        if DEBUG:
+            logging.info(text)
+        comm = edge_tts.Communicate(text, db.voice(self.cid))
+        with io.BytesIO() as out:
+            async for message in comm.stream():
+                if message["type"] == "audio":
+                    out.write(message["data"])
+            out.seek(0)
+            await self.update.effective_message.reply_voice(out)
+
     async def parse_message(self, message: dict) -> None:
-        def generate_link(match: re.Match) -> str:
-            text = match.group(1)
-            link = f" [{text}]"
-            if text in references:
-                link = f"<a href='{references[text]}'> [{text}]</a>"
-            return link
-
-        logger = logging.getLogger("EdgeGPT")
-        logger.info(message)
-
         text = self.markdown_to_html(message["text"])
         extra = ""
         if "sourceAttributions" in message:
@@ -297,23 +380,25 @@ class Query:
             ]
             if references:
                 extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
-            text = REF.sub(generate_link, text)
-        bt_list = ["/new"]
+            text = REF.sub(partial(generate_link, references=references), text)
+        text = f"<b>Bing</b>: {text}"
+        tts = False
+        if db.tts(self.cid) == 1:
+            tts = True
+        bt_lst = [button([("🆕 New topic", "new")])]
+        if not tts:
+            bt_lst.insert(0, button([("🗣 Text-to-Speech", "tts")]))
+            DATA["msg"][self.cid] = message["text"]
         if "suggestedResponses" in message and not is_group(self.update):
-            bt_list = [
-                sug["text"] for sug in message["suggestedResponses"]
-            ] + bt_list
-        suggestions = reply_markup(bt_list)
-        if self.include_question:
-            text = f"You: {self.text}\n\n{text}"
+            for idx, sug in enumerate(message["suggestedResponses"]):
+                bt_lst.insert(idx, button([(sug["text"], f"response_{idx}")]))
+        suggestions = markup(bt_lst)
+        question = f"<b>You</b>: {self.text}\n\n"
         await send(
             self.update,
-            self.add_throttling(f"{text}{extra}"),
+            self.add_throttling(f"{question}{text}{extra}"),
             reply_markup=suggestions,
-            quote=True,
         )
 
-        if settings("reply_voice"):
-            voice = settings("voice")
-            voice_file = await tts.generate_voice(message["text"], voice=voice)
-            await tts.send_voice(self.update, voice=voice_file)
+        if tts:
+            await self.tts(message["text"])

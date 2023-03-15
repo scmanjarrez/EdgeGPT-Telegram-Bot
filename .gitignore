@@ -1,4 +1,5 @@
 # Custom
+config
 .*
 tmp/
 

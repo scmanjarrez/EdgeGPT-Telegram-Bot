@@ -5,98 +5,88 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-import logging
-from pathlib import Path
 import argparse
+import logging
 
-import asr
-import tts
+import cmds
+
+import database as db
 import utils as ut
+
 from telegram import Update
 from telegram.error import TimedOut
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     filters,
     MessageHandler,
-    CallbackQueryHandler,
 )
 
 
-async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cid = ut.cid(update)
-    if (
-        context.args
-        and ut.passwd_correct(context.args[0])
-        and cid not in ut.DATA["allowed"]
-    ):
-        ut.unlock(cid)
-        await ut.send(
-            update, "Bot unlocked, enjoy the new ChatGPT experience."
-        )
-
-
-async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if ut.allowed(update):
-        await ut.is_active_conversation(update, new=True)
-
-
-async def voice_setting(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    if ut.allowed(update):
-        if len(context.args) > 0:
-            await tts.set_voice_name(update)
-        else:
-            await tts.show_voice_name(update)
-
-
-async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if ut.allowed(update):
-        status = await ut.is_active_conversation(update)
-        if status:
-            query = ut.Query(update, context)
-            query.text = await asr.voice_to_text(update)
-            query.include_question = True
-            await query.run()
-
-
-async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if ut.allowed(update):
-        status = await ut.is_active_conversation(update)
-        if status:
-            query = ut.Query(update, context)
-            await query.run()
-
-
-async def set_voice(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
-    await tts.set_voice(update)
+    if db.cached(cid):
+        query = update.callback_query
+        await query.answer()
+        if query.data == "new":
+            await cmds.new(update, context)
+        if query.data == "tts":
+            await cmds.tts(update, context)
+        elif query.data == "settings_menu":
+            await cmds.settings(update, context)
+        elif query.data == "lang_menu":
+            await cmds.lang_menu(update, context)
+        elif query.data.startswith("gender_menu"):
+            args = query.data.split("_")
+            await cmds.gender_menu(update, context, args[-1])
+        elif query.data.startswith("voice_menu"):
+            args = query.data.split("_")
+            await cmds.voice_menu(update, context, args[-2], args[-1])
+        elif query.data.startswith("voice_set"):
+            args = query.data.split("_")
+            db.set_voice(cid, args[-1])
+            await cmds.voice_menu(update, context, args[-3], args[-2])
+        elif query.data == "style_menu":
+            await cmds.style_menu(update, context)
+        elif query.data.startswith("style_set"):
+            args = query.data.split("_")
+            db.set_style(cid, args[-1])
+            await cmds.style_menu(update, context)
+        elif query.data.startswith("response"):
+            args = query.data.split("_")
+            await cmds.message(update, context, args[-1])
+        elif query.data == "tts_menu":
+            await cmds.tts(update, context)
+        elif query.data == "tts_menu":
+            await cmds.tts_menu(update, context)
+        elif query.data == "tts_toggle":
+            db.toggle_tts(cid)
+            await cmds.tts_menu(update, context)
 
 
 def setup_handlers(app: ApplicationBuilder) -> None:
-    unlock_handler = CommandHandler("unlock", unlock)
+    unlock_handler = CommandHandler("unlock", cmds.unlock)
     app.add_handler(unlock_handler)
 
-    new_handler = CommandHandler("new", new)
+    new_handler = CommandHandler("new", cmds.new)
     app.add_handler(new_handler)
 
-    voice_handler = CommandHandler("voice", voice_setting)
-    app.add_handler(voice_handler)
-
-    message_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, message)
-    application.add_handler(message_handler)
+    settings_handler = CommandHandler("settings", cmds.settings)
+    app.add_handler(settings_handler)
 
     voice_message_handler = MessageHandler(
-        filters.VOICE & ~filters.COMMAND & ~filters.TEXT, voice
+        filters.VOICE, cmds.voice
     )
-    application.add_handler(voice_message_handler)
+    app.add_handler(voice_message_handler)
 
-    application.add_handler(
-        CallbackQueryHandler(set_voice, pattern="^voice:[A-Za-z0-9_-]*")
+    message_handler = MessageHandler(
+        filters.TEXT, cmds.message
     )
+    app.add_handler(message_handler)
+
+    app.add_handler(CallbackQueryHandler(button_handler))
 
 
 async def edge_close(app: ApplicationBuilder) -> None:
@@ -104,22 +94,56 @@ async def edge_close(app: ApplicationBuilder) -> None:
         await chat.close()
 
 
+def setup_parser() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-d",
+        "--dir",
+        default="config",
+        help="Configuration directory. Default: config",
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="config.json",
+        help="Configuration file path. Default: config.json",
+    )
+    parser.add_argument(
+        "-k",
+        "--cookies",
+        default="cookies.json",
+        help="Cookies file path. Default: cookies.json",
+    )
+    parser.add_argument(
+        "-b",
+        "--database",
+        default="edge.db",
+        help="Database path. Default: edge.db",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Log debug messages, i.e. EdgeGPT responses, tts recognition...",
+    )
+    args = parser.parse_args()
+    for k, v in vars(args).items():
+        if k == "debug":
+            ut.DEBUG = v
+        else:
+            ut.PATH[k] = v
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
+    logging.getLogger("apscheduler.executors.default").addFilter(ut.NoLog())
+    logging.getLogger("apscheduler.scheduler").addFilter(ut.NoLog())
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-c", type=str, help="configuration file path", default="."
-    )
-    args = parser.parse_args()
+    setup_parser()
 
-    for key, value in ut.FILE.items():
-        ut.FILE[key] = Path(args.c, value).absolute()
-
-    if Path(ut.FILE["cfg"]).exists() and Path(ut.FILE["cookies"]).exists():
+    if ut.exists("config") and ut.exists("cookies"):
         ut.set_up()
         application = (
             ApplicationBuilder()
@@ -147,10 +171,10 @@ if __name__ == "__main__":
             )
         except KeyError:
             logging.error(
-                "New setting 'webhook' required "
-                f"in {ut.FILE['cfg']}. Check README for more info."
+                "New 'webhook' setting required "
+                f"in {ut.PATH['config']}. Check README for more info."
             )
     else:
         logging.error(
-            f"{ut.FILE['cfg']} or {ut.FILE['cookies']} file missing."
+            f"{ut.PATH['config']} or {ut.PATH['cookies']} file missing."
         )
