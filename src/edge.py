@@ -122,8 +122,7 @@ def setup_parser() -> None:
         help="Log debug messages, i.e. EdgeGPT responses, tts recognition...",
     )
     parser.add_argument(
-        "--version",
-        action="version", version="%(prog)s v0.1.0"
+        "--version", action="version", version="%(prog)s v0.1.0"
     )
     args = parser.parse_args()
     for k, v in vars(args).items():

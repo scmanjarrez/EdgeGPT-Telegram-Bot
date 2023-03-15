@@ -5,12 +5,13 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-import database as db
+import logging
 
+import database as db
 import utils as ut
 from EdgeGPT import ConversationStyle
 
-from telegram import Update, constants
+from telegram import constants, Update
 from telegram.ext import ContextTypes
 
 
@@ -205,16 +206,24 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
-        status = await ut.is_active_conversation(update)
-        if status:
-            voice_file = await update.message.voice.get_file()
-            data = await voice_file.download_as_bytearray()
-            action = constants.ChatAction.RECORD_VOICE
-            ut.action_schedule(update, context, action)
-            transcription = await ut.automatic_speech_recognition(data)
-            ut.delete_job(context, f"{action.name}_{cid}")
-            query = ut.Query(update, context, transcription)
-            await query.run()
+        try:
+            token = ut.settings("assemblyai_token")
+        except KeyError:
+            logging.getLogger("EdgeGPT").error("assemblyai_token not defined")
+        else:
+            if token != "assemblyai_token":
+                status = await ut.is_active_conversation(update)
+                if status:
+                    voice_file = await update.message.voice.get_file()
+                    data = await voice_file.download_as_bytearray()
+                    action = constants.ChatAction.RECORD_VOICE
+                    ut.action_schedule(update, context, action)
+                    transcription = await ut.automatic_speech_recognition(data)
+                    ut.delete_job(context, f"{action.name}_{cid}")
+                    query = ut.Query(update, context, transcription)
+                    await query.run()
+            else:
+                logging.getLogger("EdgeGPT").info("assemblyai_token invalid")
 
 
 async def message(
