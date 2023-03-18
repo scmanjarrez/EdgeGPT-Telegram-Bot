@@ -7,21 +7,18 @@ import asyncio
 import html
 import io
 import json
-
 import logging
 import re
+
 import traceback
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
 import aiohttp
-
 import database as db
-
 import edge_tts
 from aiohttp.web import HTTPException
-
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot, ConversationStyle
 from telegram import (
@@ -31,10 +28,10 @@ from telegram import (
     Message,
     Update,
 )
+
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
-
 
 PATH = {}
 DATA = {"config": None, "tts": None, "msg": {}}
@@ -52,7 +49,7 @@ ASR_API = "https://api.assemblyai.com/v2"
 
 
 class NoLog(logging.Filter):
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord):
         logged = True
         for lf in LOG_FILT:
             if lf in record.getMessage():
@@ -185,23 +182,56 @@ async def send(
 
 
 async def edit(
-    update: Update, text: str, reply_markup: InlineKeyboardMarkup = None
+    update_message: Union[Update, Message],
+    text: str,
+    reply_markup: InlineKeyboardMarkup = None,
 ) -> None:
     try:
-        await update.callback_query.edit_message_text(
-            text,
-            ParseMode.HTML,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True,
-        )
+        if isinstance(update_message, Update):
+            await update_message.callback_query.edit_message_text(
+                text,
+                ParseMode.HTML,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True,
+            )
+        else:
+            await update_message.edit_text(
+                text,
+                ParseMode.HTML,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True,
+            )
     except BadRequest as br:
         if not str(br).startswith("Message is not modified:"):
+            if isinstance(update_message, Update):
+                cid = update_message.effective_message.chat.id
+            else:
+                update_message.chat.id
             print(
-                f"***  Exception caught in edit "
-                f"({update.effective_message.chat.id}): ",
+                f"***  Exception caught in edit ({cid}): ",
                 br,
             )
             traceback.print_stack()
+
+
+async def remove_keyboard(update: Update) -> None:
+    await update.effective_message.edit_reply_markup(None)
+
+
+async def new_keyboard(update: Update) -> None:
+    new_kb = []
+    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
+        if kb.callback_data == "new":
+            new_kb.append(button([(kb.text, kb.callback_data)]))
+    await update.effective_message.edit_reply_markup(markup(new_kb))
+
+
+async def all_minus_tts_keyboard(update: Update) -> None:
+    new_kb = []
+    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
+        if kb.callback_data != "tts":
+            new_kb.append(button([(kb.text, kb.callback_data)]))
+    await update.effective_message.edit_reply_markup(markup(new_kb))
 
 
 async def is_active_conversation(
@@ -218,17 +248,16 @@ async def is_active_conversation(
             await send(update, "EdgeGPT API not available. Try again later.")
             return False
         else:
-            missing = "Conversation expired. "
             group = "Reply to any of my messages to interact with me."
-            await send(
-                update,
-                (
-                    f"{missing if not new or finished else ''}"
-                    "Starting new conversation. "
-                    f"{'Ask me anything... ' if new else ''}"
-                    f"{group if is_group(update) else ''}"
-                ),
-            )
+            if new:
+                await send(
+                    update,
+                    (
+                        f"Starting new conversation. "
+                        f"Ask me anything..."
+                        f"{group if is_group(update) else ''}"
+                    ),
+                )
     return True
 
 
@@ -266,15 +295,21 @@ class Query:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
         text: str = None,
+        callback: bool = False,
     ) -> None:
         self.update = update
         self.context = context
         self.text = text
+        self.callback = callback
+        self.edit = None
         self.cid = cid(self.update)
         if self.text is None:
             self.text = update.effective_message.text
 
     async def run(self) -> None:
+        if self.callback:
+            await self.update.effective_message.edit_reply_markup(None)
+        self.edit = await send(self.update, f"<b>You</b>: {self.text}")
         action_schedule(self.update, self.context, constants.ChatAction.TYPING)
         self._response = await CONV[self.cid].ask(
             self.text, getattr(ConversationStyle, db.style(self.cid))
@@ -363,7 +398,7 @@ class Query:
     def add_throttling(self, text: str) -> str:
         throttling = self._response["item"]["throttling"]
         return (
-            f"{text}\n\n<code>Messages: "
+            f"{text}\n\n<code>Message: "
             f"{throttling['numUserMessagesInConversation']}/"
             f"{throttling['maxNumUserMessagesInConversation']}</code>"
         )
@@ -416,8 +451,8 @@ class Query:
                 bt_lst.insert(idx, button([(sug["text"], f"response_{idx}")]))
         suggestions = markup(bt_lst)
         question = f"<b>You</b>: {self.text}\n\n"
-        await send(
-            self.update,
+        await edit(
+            self.edit,
             self.add_throttling(f"{question}{text}{extra}"),
             reply_markup=suggestions,
         )
@@ -434,7 +469,10 @@ async def automatic_speech_recognition(data: bytearray) -> str:
         ) as session:
             async with session.post(f"{ASR_API}/upload", data=data) as req:
                 resp = await req.json()
-                upload = {"audio_url": resp["upload_url"]}
+                upload = {
+                    "audio_url": resp["upload_url"],
+                    "language_detection": True,
+                }
             async with session.post(
                 f"{ASR_API}/transcript", json=upload
             ) as req:
@@ -448,6 +486,9 @@ async def automatic_speech_recognition(data: bytearray) -> str:
                         resp = await req.json()
                         status = resp["status"]
                         if DEBUG:
+                            logging.getLogger("EdgeGPT-ASR").info(
+                                f"response: {resp}"
+                            )
                             logging.getLogger("EdgeGPT-ASR").info(
                                 f"{upload_id}: {status}"
                             )

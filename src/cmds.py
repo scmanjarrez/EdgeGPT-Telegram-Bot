@@ -26,9 +26,13 @@ async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await ut.send(update, "Bot unlocked. Start a conversation with /new")
 
 
-async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def new(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
+) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
+        if callback:
+            await ut.remove_keyboard(update)
         await ut.is_active_conversation(update, new=True)
 
 
@@ -195,9 +199,11 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
         if cid in ut.DATA["msg"]:
+            await ut.all_minus_tts_keyboard(update)
             query = ut.Query(update, context)
             await query.tts(ut.DATA["msg"][cid])
         else:
+            await ut.new_keyboard(update)
             await ut.send(
                 update, "I can't remember our last conversation, sorry!"
             )
@@ -206,24 +212,32 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
-        try:
-            token = ut.settings("assemblyai_token")
-        except KeyError:
-            logging.getLogger("EdgeGPT").error("assemblyai_token not defined")
-        else:
-            if token != "assemblyai_token":
-                status = await ut.is_active_conversation(update)
-                if status:
-                    voice_file = await update.message.voice.get_file()
-                    data = await voice_file.download_as_bytearray()
-                    action = constants.ChatAction.RECORD_VOICE
-                    ut.action_schedule(update, context, action)
-                    transcription = await ut.automatic_speech_recognition(data)
-                    ut.delete_job(context, f"{action.name}_{cid}")
-                    query = ut.Query(update, context, transcription)
-                    await query.run()
+        status = await ut.is_active_conversation(update)
+        if status:
+            try:
+                token = ut.settings("assemblyai_token")
+            except KeyError:
+                logging.getLogger("EdgeGPT").error(
+                    "assemblyai_token not defined"
+                )
             else:
-                logging.getLogger("EdgeGPT").info("assemblyai_token invalid")
+                if token != "assemblyai_token":
+                    status = await ut.is_active_conversation(update)
+                    if status:
+                        voice_file = await update.message.voice.get_file()
+                        data = await voice_file.download_as_bytearray()
+                        action = constants.ChatAction.RECORD_VOICE
+                        ut.action_schedule(update, context, action)
+                        transcription = await ut.automatic_speech_recognition(
+                            data
+                        )
+                        ut.delete_job(context, f"{action.name}_{cid}")
+                        query = ut.Query(update, context, transcription)
+                        await query.run()
+                else:
+                    logging.getLogger("EdgeGPT").info(
+                        "assemblyai_token invalid"
+                    )
 
 
 async def message(
@@ -233,7 +247,9 @@ async def message(
     if db.cached(cid):
         status = await ut.is_active_conversation(update)
         if status:
+            callback = False
             if text is not None:
                 text = ut.button_query(update, text)
-            query = ut.Query(update, context, text)
+                callback = True
+            query = ut.Query(update, context, text, callback=callback)
             await query.run()

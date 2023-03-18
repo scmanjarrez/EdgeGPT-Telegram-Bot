@@ -31,7 +31,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
         if query.data == "new":
-            await cmds.new(update, context)
+            await cmds.new(update, context, callback=True)
         if query.data == "tts":
             await cmds.tts(update, context)
         elif query.data == "settings_menu":
