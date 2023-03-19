@@ -17,6 +17,7 @@ from telegram.ext import ContextTypes
 
 async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
+    ut.add_whitelisted(cid)
     if (
         context.args
         and ut.passwd_correct(context.args[0])
@@ -30,6 +31,7 @@ async def new(
     update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
 ) -> None:
     cid = ut.cid(update)
+    ut.add_whitelisted(cid)
     if db.cached(cid):
         if callback:
             await ut.remove_keyboard(update)
@@ -38,6 +40,7 @@ async def new(
 
 async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
+    ut.add_whitelisted(cid)
     if db.cached(cid):
         btn_lst = [
             ut.button([("Language/Voice", "lang_menu")]),
@@ -211,6 +214,7 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
+    ut.add_whitelisted(cid)
     if db.cached(cid):
         status = await ut.is_active_conversation(update)
         if status:
@@ -244,6 +248,7 @@ async def message(
     update: Update, context: ContextTypes.DEFAULT_TYPE, text: str = None
 ) -> None:
     cid = ut.cid(update)
+    ut.add_whitelisted(cid)
     if db.cached(cid):
         status = await ut.is_active_conversation(update)
         if status:

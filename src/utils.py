@@ -89,6 +89,10 @@ def settings(key: str) -> str:
     return DATA["config"]["settings"][key]
 
 
+def chats(key: str) -> str:
+    return DATA["config"]["chats"][key]
+
+
 def path(key: str) -> str:
     return Path(PATH["dir"]).joinpath(PATH[key])
 
@@ -99,6 +103,15 @@ def exists(key: str) -> bool:
 
 def passwd_correct(passwd: str) -> bool:
     return passwd == DATA["config"]["chats"]["password"]
+
+
+def whitelisted(cid: int) -> bool:
+    return cid in chats("id")
+
+
+def add_whitelisted(cid: int) -> None:
+    if whitelisted(cid) and not db.cached(cid):
+        db.add_user(cid)
 
 
 def cid(update: Update) -> int:

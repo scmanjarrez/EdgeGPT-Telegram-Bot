@@ -89,7 +89,7 @@ according to your configuration.
   >   - **id**: List of telegram IDs allowed in the bot, without password. Obtain
   >   if from bots like [@getmyid\_bot](https://t.me/getmyid_bot).
   >     ```json
-  >     "ids": [
+  >     "id": [
   >         123123123,
   >         132322322
   >     ]
