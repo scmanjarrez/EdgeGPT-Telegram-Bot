@@ -253,3 +253,19 @@ async def message(
                 callback = True
             query = ut.Query(update, context, text, callback=callback)
             await query.run()
+
+
+async def update_cookies_file(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cid = ut.cid(update)
+    if cid in ut.settings("admin"):
+        if db.cached(cid):
+            if update.message.document:
+                file = await update.message.document.get_file()
+                await file.download_to_drive(custom_path=ut.path("cookies"))
+                await update.effective_message.reply_text(
+                    "updated cookies.json"
+                )
+            else:
+                await ut.send(update, "Please send a file to save")
