@@ -7,6 +7,7 @@
 
 import argparse
 import logging
+import mimetypes
 
 import cmds
 
@@ -67,6 +68,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def setup_handlers(app: ApplicationBuilder) -> None:
+    file_handler = MessageHandler(
+        filters.Document.MimeType(mimetypes.types_map[".json"]),
+        cmds.update_cookies_file,
+    )
+    app.add_handler(file_handler)
+
     unlock_handler = CommandHandler("unlock", cmds.unlock)
     app.add_handler(unlock_handler)
 

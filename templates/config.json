@@ -7,6 +7,7 @@
     "listen": "0.0.0.0",
     "port": "vps_port",
     "cert": "cert_path",
+    "admin": ["list", "of", "admin", "ids"],
     "assemblyai_token": "assemblyai_token"
   },
   "chats": {
