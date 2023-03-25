@@ -46,6 +46,7 @@ BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
 DEBUG = False
 ASR_API = "https://api.assemblyai.com/v2"
+STATE = {}
 
 
 class NoLog(logging.Filter):
@@ -120,6 +121,13 @@ def cid(update: Update) -> int:
 
 def is_group(update: Update) -> bool:
     return update.effective_chat.id < 0
+
+
+def is_reply(update: Update) -> bool:
+    return (
+        is_group(update)
+        and update.effective_message.reply_to_message.from_user.is_bot
+    )
 
 
 def button(buttons) -> List[InlineKeyboardButton]:

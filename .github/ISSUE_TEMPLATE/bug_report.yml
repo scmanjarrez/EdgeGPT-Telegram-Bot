@@ -1,12 +1,12 @@
 name: 🐛 Report a bug
-description: Create a bug report to help improve Edge-GPT-Telegram-Bot
+description: Create a bug report to help improve EdgeGPT-Telegram-Bot
 body:
   - type: markdown
     attributes:
       value: >-
-        **Thank you for wanting to report a bug in Edge-GPT-Telegram-Bot!**
+        **Thank you for wanting to report a bug in EdgeGPT-Telegram-Bot!**
 
-          * First, be sure you are running the [latest version of the Edge-GPT-Telegram-Bot](https://github.com/scmanjarrez/Edge-GPT-Telegram-Bot/releases).
+          * First, be sure you are running the [latest version of the EdgeGPT-Telegram-Bot](https://github.com/scmanjarrez/EdgeGPT-Telegram-Bot/releases).
           * You will also need to run the bot with the argument `--debug`
             * `python src/edge.py --debug`
             * `docker run ... --debug`
@@ -34,13 +34,19 @@ body:
         ## Environment
   - type: input
     attributes:
-      label: Version of Edge-GPT-Telegram-Bot
+      label: Version of python
+      description: Can be found with `python --version`.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version of EdgeGPT-Telegram-Bot
       description: Can be found with `python src/edge.py --version`.
     validations:
       required: true
   - type: input
     attributes:
-      label: Operating system running Edge-GPT-Telegram-Bot
+      label: Operating system running EdgeGPT-Telegram-Bot
       description: >-
         Linux, Windows, MacOS, something else? With version please?
     validations:

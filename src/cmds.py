@@ -5,6 +5,7 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
+import json
 import logging
 
 import database as db
@@ -13,6 +14,13 @@ from EdgeGPT import ConversationStyle
 
 from telegram import constants, Update
 from telegram.ext import ContextTypes
+
+
+HELP = [
+    ("new", "Start a new conversation with the bot"),
+    ("settings", "Change bot settings"),
+    ("help", "List of commands"),
+]
 
 
 async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -36,6 +44,31 @@ async def new(
         if callback:
             await ut.remove_keyboard(update)
         await ut.is_active_conversation(update, new=True)
+
+
+async def help(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    cid = ut.cid(update)
+    ut.add_whitelisted(cid)
+    if db.cached(cid):
+        help_fmt = "\n".join([f"- /{cmd[0]} - {cmd[1]}" for cmd in HELP])
+        await ut.send(
+            update, f"The following commands are available:\n\n{help_fmt}"
+        )
+
+
+async def cancel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    cid = ut.cid(update)
+    ut.add_whitelisted(cid)
+    if db.cached(cid):
+        if cid in ut.STATE:
+            del ut.STATE[cid]
+            await ut.send(update, "Current action cancelled")
 
 
 async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -215,7 +248,7 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     ut.add_whitelisted(cid)
-    if db.cached(cid):
+    if db.cached(cid) and (ut.is_reply(update) or not ut.is_group(update)):
         status = await ut.is_active_conversation(update)
         if status:
             try:
@@ -249,7 +282,7 @@ async def message(
 ) -> None:
     cid = ut.cid(update)
     ut.add_whitelisted(cid)
-    if db.cached(cid):
+    if db.cached(cid) and (ut.is_reply(update) or not ut.is_group(update)):
         status = await ut.is_active_conversation(update)
         if status:
             callback = False
@@ -260,18 +293,59 @@ async def message(
             await query.run()
 
 
-async def update_cookies_file(
+async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cid = ut.cid(update)
+    if cid in ut.chats("admin"):
+        if context.args and context.args[0] in ("config", "cookies"):
+            with ut.path(context.args[0]).open() as f:
+                await update.effective_message.reply_document(f)
+        else:
+            await ut.send(
+                update,
+                "Tell me the file you want to get: "
+                "config/cookies, e.g. /get config, /get cookies",
+            )
+
+
+async def update_file(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     cid = ut.cid(update)
-    if cid in ut.settings("admin"):
-        if db.cached(cid):
-            if update.message.document:
-                file = await update.message.document.get_file()
-                await file.download_to_drive(custom_path=ut.path("cookies"))
-                ut.set_up()
-                await update.effective_message.reply_text(
-                    "updated cookies.json"
-                )
+    if cid in ut.chats("admin"):
+        if context.args and context.args[0] in ("config", "cookies"):
+            ut.STATE[cid] = context.args[0]
+            await ut.send(update, f"Ok, send me {context.args[0]}.json file")
+        else:
+            await ut.send(
+                update,
+                "Tell me the file you want to update: "
+                "config/cookies, e.g. /update config, /update cookies",
+            )
+
+
+async def process_file(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cid = ut.cid(update)
+    if cid in ut.STATE:
+        doc = await update.message.document.get_file()
+        data = await doc.download_as_bytearray()
+        try:
+            correct = json.loads(data)
+        except json.decoder.JSONDecodeError:
+            await ut.send(update, "Invalid JSON. Send me a valid JSON file.")
+        else:
+            with open(ut.path(ut.STATE[cid]), "w") as f:
+                json.dump(correct, f, indent=2)
+            if ut.STATE[cid] == "config":
+                ut.DATA["config"] = correct
             else:
-                await ut.send(update, "Please send a file to save")
+                for conv in ut.CONV:
+                    await ut.CONV[conv].close()
+                    ut.CONV[conv] = ut.Chatbot(cookiePath=ut.path("cookies"))
+            await ut.send(
+                update,
+                f"File {ut.STATE[cid]}.json updated successfully",
+                quote=True,
+            )
+            del ut.STATE[cid]

@@ -4,7 +4,7 @@ unofficial API
 
 **Content**:
 - [Requirements](#requirements)
-- [BotFather set up](#botfather-set-up)
+- [Bot commands](#bot-commands)
 - [Run](#run)
 - [Docker](#docker)
 - [Contributing](#contributing)
@@ -15,16 +15,15 @@ unofficial API
 # Requirements
 - python
 
-# BotFather set up
-Create a bot with [@BotFather](https://t.me/BotFather) and set the following commands:
-```
-new - Start a new conversation with the bot.
-settings - Change bot settings, i.e. language/voice, conversation style, etc.
-```
+# Bot commands
+Commands available to every user are set automatically. However,
+there are some commands that are hidden:
 
-> Hidden commands:
 > ```
 > /unlock <passwd> - Unlock bot functionalities with a password
+> /get <config/cookies> - Retrieve config.json or cookies.json, respectively
+> /update <config/cookies> - Update config.json or cookies.json, respectively
+> /cancel - Cancel current update action
 > ```
 
 # Run
@@ -92,6 +91,12 @@ according to your configuration.
   >     "id": [
   >         123123123,
   >         132322322
+  >     ]
+  >     ```
+  >   - **admin**: List of telegram IDs allowed retrieve and update configuration files, i.e. config.json, cookies.json.
+  >     ```json
+  >     "admin": [
+  >         123123123
   >     ]
   >     ```
 

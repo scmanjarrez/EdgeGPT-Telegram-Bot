@@ -17,6 +17,7 @@ import utils as ut
 from telegram import Update
 from telegram.error import TimedOut
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
@@ -68,12 +69,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def setup_handlers(app: ApplicationBuilder) -> None:
-    file_handler = MessageHandler(
-        filters.Document.MimeType(mimetypes.types_map[".json"]),
-        cmds.update_cookies_file,
-    )
-    app.add_handler(file_handler)
-
     unlock_handler = CommandHandler("unlock", cmds.unlock)
     app.add_handler(unlock_handler)
 
@@ -83,18 +78,40 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     settings_handler = CommandHandler("settings", cmds.settings)
     app.add_handler(settings_handler)
 
+    help_handler = CommandHandler("help", cmds.help)
+    app.add_handler(help_handler)
+
+    get_handler = CommandHandler("get", cmds.get_file)
+    app.add_handler(get_handler)
+
+    update_handler = CommandHandler("update", cmds.update_file)
+    app.add_handler(update_handler)
+
+    cancel_handler = CommandHandler("cancel", cmds.cancel)
+    app.add_handler(cancel_handler)
+
     voice_message_handler = MessageHandler(filters.VOICE, cmds.voice)
     app.add_handler(voice_message_handler)
 
     message_handler = MessageHandler(filters.TEXT, cmds.message)
     app.add_handler(message_handler)
 
+    file_handler = MessageHandler(
+        filters.Document.MimeType(mimetypes.types_map[".json"]),
+        cmds.process_file,
+    )
+    app.add_handler(file_handler)
+
     app.add_handler(CallbackQueryHandler(button_handler))
 
 
-async def edge_close(app: ApplicationBuilder) -> None:
+async def close_chats(application: Application) -> None:
     for chat in ut.CONV.values():
         await chat.close()
+
+
+async def setup_commands(application: Application) -> None:
+    await application.bot.set_my_commands(cmds.HELP)
 
 
 def setup_parser() -> None:
@@ -126,10 +143,13 @@ def setup_parser() -> None:
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Log debug messages, i.e. EdgeGPT responses, tts recognition...",
+        help=(
+            "Log debug messages, i.e. EdgeGPT responses, "
+            "asr transcriptions..."
+        ),
     )
     parser.add_argument(
-        "--version", action="version", version="%(prog)s v0.1.0"
+        "--version", action="version", version="%(prog)s v0.1.3"
     )
     args = parser.parse_args()
     for k, v in vars(args).items():
@@ -154,7 +174,8 @@ if __name__ == "__main__":
         application = (
             ApplicationBuilder()
             .token(ut.settings("token"))
-            .post_shutdown(edge_close)
+            .post_init(setup_commands)
+            .post_shutdown(close_chats)
             .build()
         )
         setup_handlers(application)
