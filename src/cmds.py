@@ -269,6 +269,7 @@ async def update_cookies_file(
             if update.message.document:
                 file = await update.message.document.get_file()
                 await file.download_to_drive(custom_path=ut.path("cookies"))
+                ut.set_up()
                 await update.effective_message.reply_text(
                     "updated cookies.json"
                 )
