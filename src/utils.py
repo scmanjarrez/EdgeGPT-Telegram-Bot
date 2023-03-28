@@ -126,7 +126,7 @@ def is_group(update: Update) -> bool:
 def is_reply(update: Update) -> bool:
     return (
         is_group(update)
-        and update.effective_message.reply_to_message.from_user.is_bot
+        and update.message is not None and update.message.reply_to_message.from_user.is_bot
     )
 
 
