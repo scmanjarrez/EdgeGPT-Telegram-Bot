@@ -93,7 +93,8 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     voice_message_handler = MessageHandler(filters.VOICE, cmds.voice)
     app.add_handler(voice_message_handler)
 
-    message_handler = MessageHandler(filters.TEXT, cmds.message)
+    message_handler = MessageHandler(
+        filters.TEXT & ~filters.UpdateType.EDITED, cmds.message)
     app.add_handler(message_handler)
 
     file_handler = MessageHandler(

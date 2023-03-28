@@ -126,7 +126,7 @@ def is_group(update: Update) -> bool:
 def is_reply(update: Update) -> bool:
     return (
         is_group(update)
-        and update.message is not None and update.message.reply_to_message.from_user.is_bot
+        and update.effective_message.reply_to_message.from_user.is_bot
     )
 
 
@@ -333,7 +333,8 @@ class Query:
         self.edit = await send(self.update, f"<b>You</b>: {self.text}")
         action_schedule(self.update, self.context, constants.ChatAction.TYPING)
         self._response = await CONV[self.cid].ask(
-            self.text, getattr(ConversationStyle, db.style(self.cid))
+            prompt=self.text,
+            conversation_style=getattr(ConversationStyle, db.style(self.cid))
         )
         delete_job(
             self.context, f"{constants.ChatAction.TYPING.name}_{self.cid}"
