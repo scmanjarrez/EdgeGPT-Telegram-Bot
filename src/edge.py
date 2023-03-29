@@ -8,6 +8,7 @@
 import argparse
 import logging
 import mimetypes
+import subprocess
 
 import cmds
 
@@ -26,6 +27,8 @@ from telegram.ext import (
     MessageHandler,
 )
 from version import __VERSION__
+
+LEGACY_VERSION = "v0.1.3"
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -117,6 +120,19 @@ async def setup_commands(application: Application) -> None:
     await application.bot.set_my_commands(cmds.HELP)
 
 
+def get_version():
+    run_cmd = (
+        lambda cmd: subprocess.check_output(cmd, shell=True).decode().strip()
+    )
+    try:
+        version = run_cmd("git describe --tags --abbrev=0 HEAD")
+        commit = run_cmd("git rev-parse --short HEAD")
+    except:
+        return f"{LEGACY_VERSION} (legacy)"
+
+    return f"v{version} - {commit} (git)"
+
+
 def setup_parser() -> None:
     parser = argparse.ArgumentParser(prog="edge-gpt-telegram-bot")
     parser.add_argument(
@@ -152,7 +168,7 @@ def setup_parser() -> None:
         ),
     )
     parser.add_argument(
-        "--version", action="version", version=f"%(prog)s v{__VERSION__}"
+        "--version", action="version", version=f"%(prog)s {get_version()}"
     )
     args = parser.parse_args()
 
