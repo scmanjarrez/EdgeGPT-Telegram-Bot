@@ -1,7 +1,7 @@
 repos:
   - repo: local
     hooks:
-      - id: usort
+      - id: black
         name: Formatter
         entry: bash -c 'black -l 79 "$@"; git add -u' --
         language: python
@@ -14,3 +14,9 @@ repos:
         entry: bash -c 'usort format "$@"; git add -u' --
         language: python
         files: \.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

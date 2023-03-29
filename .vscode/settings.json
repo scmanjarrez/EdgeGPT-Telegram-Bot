@@ -6,5 +6,5 @@
     "python.formatting.provider": "black",
     "isort.path": [
         "usort format"
-    ],
+    ]
 }

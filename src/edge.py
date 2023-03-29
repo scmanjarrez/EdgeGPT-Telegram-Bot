@@ -126,9 +126,8 @@ def get_version():
     try:
         version = run_cmd("git describe --tags --abbrev=0 HEAD")
         commit = run_cmd("git rev-parse --short HEAD")
-    except:
+    except subprocess.CalledProcessError:
         return f"{LEGACY_VERSION} (legacy)"
-
     return f"v{version} - {commit} (git)"
 
 
