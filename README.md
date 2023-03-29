@@ -80,6 +80,8 @@ according to your configuration.
   >     ```
   >
   >   - **cert**: Path to your server certificate (can be self-signed)
+  >     > Warning: If you're using a verified certificate, you may receive "certificate verify failed"
+  >     error. Leave `cert` path empty in your config.json
   >
   >   - **assemblyai_token**: Your AssemblyAI token, required to use ASR.
   >   More info: [Supported Languages](https://www.assemblyai.com/docs#supported-languages)
