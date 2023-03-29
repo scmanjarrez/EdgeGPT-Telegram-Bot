@@ -1,0 +1,10 @@
+{
+    "python.analysis.fixAll": [],
+    "python.formatting.blackArgs": [
+        "-l 79"
+    ],
+    "python.formatting.provider": "black",
+    "isort.path": [
+        "usort format"
+    ],
+}

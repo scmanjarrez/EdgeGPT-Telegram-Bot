@@ -1,6 +1,5 @@
 # Custom
 config
-.*
 tmp/
 
 # Byte-compiled / optimized / DLL files

@@ -3,11 +3,15 @@ Telegram bot using [EdgeGPT](https://github.com/acheong08/EdgeGPT)
 unofficial API
 
 **Content**:
+- [Description](#description)
 - [Requirements](#requirements)
 - [Bot commands](#bot-commands)
 - [Run](#run)
 - [Docker](#docker)
+  - [Manual build](#manual-build)
+  - [Dockerhub image](#dockerhub-image)
 - [Contributing](#contributing)
+  - [Pre-commit hooks](#pre-commit-hooks)
   - [VSCode project settings](#vscode-project-settings)
   - [Contributors](#contributors)
 - [License](#license)
@@ -139,11 +143,23 @@ please respect the following format:
   $ black -l 79 *py
   ```
 
+
+
 > If you are using flake8, ignore E203 in .flake8
 > ```
 > [flake8]
 > extend-ignore = E203
 > ```
+
+## Pre-commit hooks
+Installation:
+```bash
+pre-commit install
+```
+Run manually:
+```bash
+pre-commit run --all-files
+```
 
 ## VSCode project settings
 VSCode should have the following settings in settings.json:
