@@ -7,6 +7,7 @@ mypy-extensions==1.0.0
 packaging==23.0
 pathspec==0.11.0
 platformdirs==3.1.0
+pre-commit==3.2.1
 PyYAML==6.0
 stdlibs==2022.10.9
 toml==0.10.2
@@ -15,3 +16,4 @@ trailrunner==1.2.1
 typing-inspect==0.8.0
 typing_extensions==4.5.0
 usort==1.0.5
+
