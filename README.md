@@ -14,6 +14,7 @@ unofficial API
 
 # Requirements
 - python
+- git
 
 # Bot commands
 Commands available to every user are set automatically. However,

@@ -26,6 +26,7 @@ from telegram.ext import (
     filters,
     MessageHandler,
 )
+from version import __VERSION__
 
 LEGACY_VERSION = "v0.1.3"
 
@@ -170,6 +171,7 @@ def setup_parser() -> None:
         "--version", action="version", version=f"%(prog)s {get_version()}"
     )
     args = parser.parse_args()
+
     for k, v in vars(args).items():
         if k == "debug":
             ut.DEBUG = v
