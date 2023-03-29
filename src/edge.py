@@ -8,6 +8,7 @@
 import argparse
 import logging
 import mimetypes
+import subprocess
 
 import cmds
 
@@ -25,6 +26,8 @@ from telegram.ext import (
     filters,
     MessageHandler,
 )
+
+LEGACY_VERSION = "v0.1.3"
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -94,7 +97,8 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     app.add_handler(voice_message_handler)
 
     message_handler = MessageHandler(
-        filters.TEXT & ~filters.UpdateType.EDITED, cmds.message)
+        filters.TEXT & ~filters.UpdateType.EDITED, cmds.message
+    )
     app.add_handler(message_handler)
 
     file_handler = MessageHandler(
@@ -113,6 +117,19 @@ async def close_chats(application: Application) -> None:
 
 async def setup_commands(application: Application) -> None:
     await application.bot.set_my_commands(cmds.HELP)
+
+
+def get_version():
+    run_cmd = (
+        lambda cmd: subprocess.check_output(cmd, shell=True).decode().strip()
+    )
+    try:
+        version = run_cmd("git describe --tags --abbrev=0 HEAD")
+        commit = run_cmd("git rev-parse --short HEAD")
+    except:
+        return f"{LEGACY_VERSION} (legacy)"
+
+    return f"v{version} - {commit} (git)"
 
 
 def setup_parser() -> None:
@@ -150,7 +167,7 @@ def setup_parser() -> None:
         ),
     )
     parser.add_argument(
-        "--version", action="version", version="%(prog)s v0.1.3"
+        "--version", action="version", version=f"%(prog)s {get_version()}"
     )
     args = parser.parse_args()
     for k, v in vars(args).items():

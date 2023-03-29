@@ -334,7 +334,7 @@ class Query:
         action_schedule(self.update, self.context, constants.ChatAction.TYPING)
         self._response = await CONV[self.cid].ask(
             prompt=self.text,
-            conversation_style=getattr(ConversationStyle, db.style(self.cid))
+            conversation_style=getattr(ConversationStyle, db.style(self.cid)),
         )
         delete_job(
             self.context, f"{constants.ChatAction.TYPING.name}_{self.cid}"
