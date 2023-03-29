@@ -26,7 +26,6 @@ from telegram.ext import (
     filters,
     MessageHandler,
 )
-from version import __VERSION__
 
 LEGACY_VERSION = "v0.1.3"
 
