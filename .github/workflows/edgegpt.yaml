@@ -1,0 +1,32 @@
+name: Open PR on new EdgeGPT release
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */12 * * *"
+
+jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Fetch release version
+        run: |
+          latest=$(curl -sL https://api.github.com/repos/acheong08/EdgeGPT/releases/latest | jq -r ".tag_name")
+          curr=$(sed -E -n 's/EdgeGPT==([a-z0-9.]+)/\1/p' requirements.txt)
+          echo "new=$([[ "$latest" = "$curr" ]] && echo False || echo True)" >> $GITHUB_ENV
+          echo "latest=$latest" >> $GITHUB_ENV
+
+      - name: Update EdgeGPT version
+        if: ${{ env.new }}
+        run: |
+          sed -E -i "s/(EdgeGPT==)([a-z0-9.]+)/\1${{ env.latest }}/" requirements.txt
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v4
+        with:
+          commit-message: New EdgeGPT release
+          title: Automated EdgeGPT PR on new release
