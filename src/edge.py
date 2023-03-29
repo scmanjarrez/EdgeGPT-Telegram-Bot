@@ -25,6 +25,7 @@ from telegram.ext import (
     filters,
     MessageHandler,
 )
+from version import __VERSION__
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -94,7 +95,8 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     app.add_handler(voice_message_handler)
 
     message_handler = MessageHandler(
-        filters.TEXT & ~filters.UpdateType.EDITED, cmds.message)
+        filters.TEXT & ~filters.UpdateType.EDITED, cmds.message
+    )
     app.add_handler(message_handler)
 
     file_handler = MessageHandler(
@@ -150,9 +152,10 @@ def setup_parser() -> None:
         ),
     )
     parser.add_argument(
-        "--version", action="version", version="%(prog)s v0.1.3"
+        "--version", action="version", version=f"%(prog)s v{__VERSION__}"
     )
     args = parser.parse_args()
+
     for k, v in vars(args).items():
         if k == "debug":
             ut.DEBUG = v
