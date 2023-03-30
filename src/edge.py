@@ -78,6 +78,9 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     new_handler = CommandHandler("new", cmds.new)
     app.add_handler(new_handler)
 
+    image_handler = CommandHandler("image", cmds.image)
+    app.add_handler(image_handler)
+
     settings_handler = CommandHandler("settings", cmds.settings)
     app.add_handler(settings_handler)
 

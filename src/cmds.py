@@ -5,19 +5,26 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
+import asyncio
 import json
 import logging
+from multiprocessing import Queue
+from queue import Empty
+
+import bing
 
 import database as db
 import utils as ut
 from EdgeGPT import ConversationStyle
 
-from telegram import constants, Update
+from telegram import constants, InputMediaPhoto, Update
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 
 HELP = [
     ("new", "Start a new conversation with the bot"),
+    ("image", "Generate images using Bing creator"),
     ("settings", "Change bot settings"),
     ("help", "List of commands"),
 ]
@@ -236,7 +243,7 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if db.cached(cid):
         if cid in ut.DATA["msg"]:
             await ut.all_minus_tts_keyboard(update)
-            query = ut.Query(update, context)
+            query = bing.Query(update, context)
             await query.tts(ut.DATA["msg"][cid])
         else:
             await ut.new_keyboard(update)
@@ -269,7 +276,7 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                             data
                         )
                         ut.delete_job(context, f"{action.name}_{cid}")
-                        query = ut.Query(update, context, transcription)
+                        query = bing.Query(update, context, transcription)
                         await query.run()
                 else:
                     logging.getLogger("EdgeGPT").info(
@@ -289,7 +296,7 @@ async def message(
             if text is not None:
                 text = ut.button_query(update, text)
                 callback = True
-            query = ut.Query(update, context, text, callback=callback)
+            query = bing.Query(update, context, text, callback=callback)
             await query.run()
 
 
@@ -349,3 +356,42 @@ async def process_file(
                 quote=True,
             )
             del ut.STATE[cid]
+
+
+async def image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    cid = ut.cid(update)
+    if db.cached(cid):
+        if context.args:
+            asyncio.ensure_future(
+                gather_images(update, context, " ".join(context.args))
+            )
+        else:
+            await ut.send(
+                update,
+                "Give me the prompt on the command, "
+                "e.g. /image a friendly shark logo",
+                quote=True,
+            )
+
+
+async def gather_images(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str
+) -> None:
+    img_queue = Queue()
+    img_gen = bing.QueryImage(prompt, img_queue)
+    img_gen.start()
+    action = constants.ChatAction.UPLOAD_PHOTO
+    ut.action_schedule(update, context, action)
+    while True:
+        try:
+            data = img_queue.get_nowait()
+            ut.delete_job(context, f"{action.name}_{ut.cid(update)}")
+            media = [InputMediaPhoto(image) for image in data[0]]
+            await update.effective_message.reply_media_group(
+                media,
+                caption=f"<b>You</b>: {prompt}",
+                parse_mode=ParseMode.HTML,
+            )
+            break
+        except Empty:
+            await asyncio.sleep(3)
