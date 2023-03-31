@@ -386,12 +386,19 @@ async def gather_images(
         try:
             data = img_queue.get_nowait()
             ut.delete_job(context, f"{action.name}_{ut.cid(update)}")
-            media = [InputMediaPhoto(image) for image in data[0]]
-            await update.effective_message.reply_media_group(
-                media,
-                caption=f"<b>You</b>: {prompt}",
-                parse_mode=ParseMode.HTML,
-            )
+            if data[0] is not None:
+                media = [InputMediaPhoto(image) for image in data[0]]
+                await update.effective_message.reply_media_group(
+                    media,
+                    caption=f"<b>You</b>: {prompt}",
+                    parse_mode=ParseMode.HTML,
+                )
+            else:
+                await ut.send(
+                    update,
+                    "Image could not be generated. Try another prompt",
+                    quote=True,
+                )
             break
         except Empty:
             await asyncio.sleep(3)
