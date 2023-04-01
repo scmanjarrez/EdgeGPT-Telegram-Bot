@@ -201,6 +201,7 @@ if __name__ == "__main__":
     )
     logging.getLogger("apscheduler.executors.default").addFilter(ut.NoLog())
     logging.getLogger("apscheduler.scheduler").addFilter(ut.NoLog())
+    logging.getLogger("openai").addFilter(ut.NoLog())
 
     setup_parser()
 

@@ -327,7 +327,7 @@ async def asr_whisper(fid: str, data: bytearray) -> str:
         openai.api_key = ut.apis("openai")
         try:
             with out.open("rb") as f:
-                resp = openai.Audio.transcribe("whisper-1", f)
+                resp = await openai.Audio.atranscribe("whisper-1", f)
             text = resp["text"]
         except openai.error.AuthenticationError:
             logging.getLogger("EdgeGPT - ASR").error(

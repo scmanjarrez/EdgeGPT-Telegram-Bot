@@ -36,7 +36,7 @@ from telegram.ext import ContextTypes
 PATH = {}
 DATA = {"config": None, "tts": None, "msg": {}}
 CONV = {}
-LOG_FILT = ["Removed job", "Added job", "Job", "Running job"]
+LOG_FILT = ["Removed job", "Added job", "Job", "Running job", "message="]
 DEBUG = False
 STATE = {}
 
