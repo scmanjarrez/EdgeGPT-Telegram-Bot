@@ -3,7 +3,6 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
-import asyncio
 
 import json
 import logging
@@ -14,11 +13,10 @@ import traceback
 from pathlib import Path
 from typing import Dict, List, Union
 
-import aiohttp
 import database as db
 
 import edge_tts
-from aiohttp.web import HTTPException
+
 from dateutil.parser import isoparse
 from EdgeGPT import Chatbot
 
@@ -40,7 +38,6 @@ DATA = {"config": None, "tts": None, "msg": {}}
 CONV = {}
 LOG_FILT = ["Removed job", "Added job", "Job", "Running job"]
 DEBUG = False
-ASR_API = "https://api.assemblyai.com/v2"
 STATE = {}
 
 
@@ -72,6 +69,7 @@ def rename_files() -> None:
 def set_up() -> None:
     Path(PATH["dir"]).mkdir(exist_ok=True)
     db.setup_db()
+    db.update_db()
     rename_files()
     with open(path("config")) as f:
         DATA["config"] = json.load(f)
@@ -83,6 +81,10 @@ def set_up() -> None:
 
 def settings(key: str) -> str:
     return DATA["config"]["settings"][key]
+
+
+def apis(key: str) -> str:
+    return DATA["config"]["apis"][key]
 
 
 def chats(key: str) -> str:
@@ -303,41 +305,3 @@ def generate_link(match: re.Match, references: dict) -> str:
     if text in references:
         link = f"<a href='{references[text]}'>[{text}]</a>"
     return link
-
-
-async def automatic_speech_recognition(data: bytearray) -> str:
-    text = "Could not connect to AssemblyAI API. Try again later."
-    try:
-        async with aiohttp.ClientSession(
-            headers={"authorization": settings("assemblyai_token")}
-        ) as session:
-            async with session.post(f"{ASR_API}/upload", data=data) as req:
-                resp = await req.json()
-                upload = {
-                    "audio_url": resp["upload_url"],
-                    "language_detection": True,
-                }
-            async with session.post(
-                f"{ASR_API}/transcript", json=upload
-            ) as req:
-                resp = await req.json()
-                upload_id = resp["id"]
-                status = resp["status"]
-                while status not in ("completed", "error"):
-                    async with session.get(
-                        f"{ASR_API}/transcript/{upload_id}"
-                    ) as req:
-                        resp = await req.json()
-                        status = resp["status"]
-                        if DEBUG:
-                            logging.getLogger("EdgeGPT-ASR").info(
-                                f"response: {resp}"
-                            )
-                            logging.getLogger("EdgeGPT-ASR").info(
-                                f"{upload_id}: {status}"
-                            )
-                        await asyncio.sleep(5)
-                text = resp["text"]
-    except HTTPException:
-        pass
-    return text
