@@ -6,12 +6,15 @@
     "ip": "vps_ip",
     "listen": "0.0.0.0",
     "port": "vps_port",
-    "cert": "cert_path",
-    "admin": ["list", "of", "admin", "ids"],
-    "assemblyai_token": "assemblyai_token"
+    "cert": "cert_path"
   },
+  "apis": {
+    "openai": "openai_token",
+    "assemblyai": "assemblyai_token"
+  }
   "chats": {
     "password": "password_to_enable_bot",
-    "id": ["list", "of", "allowed", "telegram", "ids"]
+    "id": ["list", "of", "allowed", "telegram", "ids"],
+    "admin": ["list", "of", "admin", "telegram", "ids"]
   }
 }

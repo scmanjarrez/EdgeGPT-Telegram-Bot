@@ -7,11 +7,10 @@
 
 import asyncio
 import json
-import logging
 from multiprocessing import Queue
 from queue import Empty
 
-import bing
+import backend
 
 import database as db
 import utils as ut
@@ -83,9 +82,10 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ut.add_whitelisted(cid)
     if db.cached(cid):
         btn_lst = [
-            ut.button([("Language/Voice", "lang_menu")]),
-            ut.button([("Conversation style", "style_menu")]),
+            ut.button([("Languages/Voices", "langs_menu")]),
+            ut.button([("Conversation styles", "styles_menu")]),
             ut.button([("Toggle TTS", "tts_menu")]),
+            ut.button([("Backends", "backends_menu")]),
         ]
         resp = ut.send
         if update.callback_query is not None:
@@ -97,7 +97,7 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-async def lang_menu(
+async def langs_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     cid = ut.cid(update)
@@ -106,7 +106,7 @@ async def lang_menu(
         cur_voice = db.voice(cid)
         btn_lst = [
             ut.button(
-                [(lang.upper(), f"gender_menu_{lang}") for lang in chunk]
+                [(lang.upper(), f"genders_menu_{lang}") for lang in chunk]
             )
             for chunk in ut.chunk(sorted(voices))
         ]
@@ -116,12 +116,12 @@ async def lang_menu(
             resp = ut.edit
         await resp(
             update,
-            f"Your current voice is <b>{cur_voice}</b>\n\n" f"Languages",
+            f"Your current voice is <b>{cur_voice}</b>\n\nLanguages list:",
             reply_markup=ut.markup(btn_lst),
         )
 
 
-async def gender_menu(
+async def genders_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE, language: str
 ) -> None:
     cid = ut.cid(update)
@@ -129,13 +129,13 @@ async def gender_menu(
         voices = await ut.list_voices()
         cur_voice = db.voice(cid)
         btn_lst = [
-            ut.button([(gend, f"voice_menu_{language}_{gend}")])
+            ut.button([(gend, f"voices_menu_{language}_{gend}")])
             for gend in sorted(voices[language])
         ]
         btn_lst.append(
             ut.button(
                 [
-                    ("« Back to Languages", "lang_menu"),
+                    ("« Back to Languages", "langs_menu"),
                     ("« Back to Settings", "settings_menu"),
                 ]
             )
@@ -145,12 +145,12 @@ async def gender_menu(
             resp = ut.edit
         await resp(
             update,
-            f"Your current voice is <b>{cur_voice}</b>\n\n" f"Genders",
+            f"Your current voice is <b>{cur_voice}</b>\n\nGenders list:",
             reply_markup=ut.markup(btn_lst),
         )
 
 
-async def voice_menu(
+async def voices_menu(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     language: str,
@@ -174,8 +174,8 @@ async def voice_menu(
         btn_lst.append(
             ut.button(
                 [
-                    ("« Back to Genders", f"gender_menu_{language}"),
-                    ("« Back to Languages", "lang_menu"),
+                    ("« Back to Genders", f"genders_menu_{language}"),
+                    ("« Back to Languages", "langs_menu"),
                     ("« Back to Settings", "settings_menu"),
                 ]
             )
@@ -185,12 +185,12 @@ async def voice_menu(
             resp = ut.edit
         await resp(
             update,
-            f"Your current voice is <b>{cur_voice}</b>\n\n" f"Voices",
+            f"Your current voice is <b>{cur_voice}</b>\n\nVoices list:",
             reply_markup=ut.markup(btn_lst),
         )
 
 
-async def style_menu(
+async def styles_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     cid = ut.cid(update)
@@ -200,7 +200,11 @@ async def style_menu(
             ut.button(
                 [
                     (
-                        st.name if st.name != cur_style else f"» {st.name} «",
+                        (
+                            st.name.capitalize()
+                            if st.name != cur_style
+                            else f"» {st.name.capitalize()} «"
+                        ),
                         f"style_set_{st.name}",
                     )
                 ]
@@ -213,8 +217,9 @@ async def style_menu(
             resp = ut.edit
         await resp(
             update,
-            f"Your current conversation style is <b>{cur_style}</b>\n\n"
-            f"Styles",
+            f"Your current conversation style is "
+            f"<b>{cur_style.capitalize()}</b>\n\n"
+            f"Conversation styles:",
             reply_markup=ut.markup(btn_lst),
         )
 
@@ -223,9 +228,9 @@ async def tts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
         cur_tts = db.tts(cid)
-        state = "ON" if cur_tts == 1 else "OFF"
+        state = "Yes" if cur_tts == 1 else "No"
         btn_lst = [
-            ut.button([(f"TTS: {state}", "tts_toggle")]),
+            ut.button([(f"Enabled: {state}", "tts_toggle")]),
             ut.button([("« Back to Settings", "settings_menu")]),
         ]
         resp = ut.send
@@ -238,12 +243,82 @@ async def tts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def backends_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cid = ut.cid(update)
+    if db.cached(cid):
+        btn_lst = [
+            # ut.button([("Chat", "backend_menu_chat")]),
+            ut.button([("ASR", "backend_menu_asr")]),
+            # ut.button([("Image", "backend_menu_image")]),
+            ut.button([("« Back to Settings", "settings_menu")]),
+        ]
+        resp = ut.send
+        if update.callback_query is not None:
+            resp = ut.edit
+        await resp(
+            update,
+            "Backends",
+            reply_markup=ut.markup(btn_lst),
+        )
+
+
+async def backend_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, backend_type: str
+) -> None:
+    cid = ut.cid(update)
+    if db.cached(cid):
+        if backend_type == "chat":
+            cur_back = db.chat_backend(cid)
+            backends = db.CHAT_BACKENDS
+        elif backend_type == "asr":
+            cur_back = db.asr_backend(cid)
+            backends = db.ASR_BACKENDS
+        else:
+            cur_back = db.image_backend(cid)
+            backends = db.IMAGE_BACKENDS
+        btype = (
+            backend_type.capitalize()
+            if backend_type != "asr"
+            else backend_type.upper()
+        )
+        btn_lst = [
+            ut.button(
+                [
+                    (
+                        back if back != cur_back else f"» {back} «",
+                        f"backend_set_{backend_type}_{back}",
+                    )
+                ]
+            )
+            for back in backends
+        ]
+        btn_lst.append(
+            ut.button(
+                [
+                    ("« Back to Backends", "backends_menu"),
+                    ("« Back to Settings", "settings_menu"),
+                ]
+            )
+        )
+        resp = ut.send
+        if update.callback_query is not None:
+            resp = ut.edit
+        await resp(
+            update,
+            f"Your current {btype} backend is <b>{cur_back}</b>\n\n"
+            f"{btype} backends:",
+            reply_markup=ut.markup(btn_lst),
+        )
+
+
 async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
         if cid in ut.DATA["msg"]:
             await ut.all_minus_tts_keyboard(update)
-            query = bing.Query(update, context)
+            query = backend.BingAI(update, context)
             await query.tts(ut.DATA["msg"][cid])
         else:
             await ut.new_keyboard(update)
@@ -258,30 +333,17 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if db.cached(cid) and (ut.is_reply(update) or not ut.is_group(update)):
         status = await ut.is_active_conversation(update)
         if status:
-            try:
-                token = ut.settings("assemblyai_token")
-            except KeyError:
-                logging.getLogger("EdgeGPT").error(
-                    "assemblyai_token not defined"
-                )
-            else:
-                if token != "assemblyai_token":
-                    status = await ut.is_active_conversation(update)
-                    if status:
-                        voice_file = await update.message.voice.get_file()
-                        data = await voice_file.download_as_bytearray()
-                        action = constants.ChatAction.RECORD_VOICE
-                        ut.action_schedule(update, context, action)
-                        transcription = await ut.automatic_speech_recognition(
-                            data
-                        )
-                        ut.delete_job(context, f"{action.name}_{cid}")
-                        query = bing.Query(update, context, transcription)
-                        await query.run()
-                else:
-                    logging.getLogger("EdgeGPT").info(
-                        "assemblyai_token invalid"
-                    )
+            voice_file = await update.message.voice.get_file()
+            data = await voice_file.download_as_bytearray()
+            action = constants.ChatAction.RECORD_VOICE
+            ut.action_schedule(update, context, action)
+            transcription = await backend.automatic_speech_recognition(
+                cid, voice_file.file_id, data
+            )
+            ut.delete_job(context, f"{action.name}_{cid}")
+            if transcription is not None:
+                query = backend.BingAI(update, context, transcription)
+                await query.run()
 
 
 async def message(
@@ -296,7 +358,7 @@ async def message(
             if text is not None:
                 text = ut.button_query(update, text)
                 callback = True
-            query = bing.Query(update, context, text, callback=callback)
+            query = backend.BingAI(update, context, text, callback=callback)
             await query.run()
 
 
@@ -378,7 +440,7 @@ async def gather_images(
     update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str
 ) -> None:
     img_queue = Queue()
-    img_gen = bing.QueryImage(prompt, img_queue)
+    img_gen = backend.BingImage(prompt, img_queue)
     img_gen.start()
     action = constants.ChatAction.UPLOAD_PHOTO
     ut.action_schedule(update, context, action)

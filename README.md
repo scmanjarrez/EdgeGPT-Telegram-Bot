@@ -19,6 +19,7 @@ unofficial API
 # Requirements
 - python
 - git
+- ffmpeg (only if you are using whisper)
 
 # Bot commands
 Commands available to every user are set automatically. However,
@@ -32,7 +33,7 @@ there are some commands that are hidden:
 > ```
 
 # Run
-- Install python dependencies
+- Install python dependencies.
   ```bash
   $ pip install -r requirements.txt
   ```
@@ -41,7 +42,7 @@ there are some commands that are hidden:
   > $ pip install -r dev_requirements.txt
   > ```
 
-- Create a self-signed certificate in order to communicate with telegram server using SSL
+- Create a self-signed certificate in order to communicate with telegram server using SSL.
   ```bash
   $ openssl req -newkey rsa:2048 -sha256 -nodes -keyout config/nginx.key -x509 -days 3650 -out config/nginx.pem
   ```
@@ -57,38 +58,40 @@ according to your configuration.
   > **config.json**:
   > - **settings**:
   >   - **token** - Telegram bot token, obtained from
-  >   [@BotFather](https://t.me/BotFather)
+  >   [@BotFather](https://t.me/BotFather).
   >
   >   - **webhook**: `true` to run the bot using webhooks.
   >   `false` to use polling.
   >
-  >   - **log_level**: set level of the logging module.
-  >   More info: [log levels](https://docs.python.org/3/library/logging.html#logging-levels)
+  >   - **log_level**: set [level](https://docs.python.org/3/library/logging.html#logging-levels)
+  >     of the logging module.
   >
   >   - **ip**: Your server/home IP. Must be accessible from internet.
   >
   >   - **port**: Port to receive telegram updates. Allowed ports: `443`, `80`, `88` and `8443`
-  >     > Nginx can be used as reverse in order to use other ports.
+  >     > Nginx can be used as a reverse proxy in order to use other ports.
   >     > Copy `templates/nginx.conf` to config and change values according
   >     > to your configuration.
   >     >
-  >     > - `<docker-host-ip>` is the gateway of the containers. Looks like `172.17.0.1`
+  >     > - `<docker-host-ip>` is the gateway of the container. Similar to `172.17.0.1`
   >     > - `<portX>` Can be any port in the user range.
   >     ```bash
   >     $ cp templates/nginx.conf config/nginx.con
   >     $ docker run --rm --name nginx --net host -v ./config/nginx.conf:/etc/nginx/nginx.conf:ro -v ./config/nginx.key:/etc/nginx/nginx.key:ro -v ./config/nginx.pem:/etc/nginx/nginx.pem:ro nginx
   >     ```
   >
-  >   - **cert**: Path to your server certificate (can be self-signed)
+  >   - **cert**: Path to your server certificate (can be self-signed).
   >     > Warning: If you're using a verified certificate, you may receive "certificate verify failed"
   >     error. Leave `cert` path empty in your config.json
   >
-  >   - **assemblyai_token**: Your AssemblyAI token, required to use ASR.
-  >   More info: [Supported Languages](https://www.assemblyai.com/docs#supported-languages)
+  > - **apis**:
+  >   - **openai**: OpenAI token to use with whisper ([ASR](https://platform.openai.com/docs/guides/speech-to-text/supported-languages)),
+  >     chatgpt/chatgpt4 and Dall-E (image generation).
+  >   - **assemblyai**: AssemblyAI token ([ASR](https://www.assemblyai.com/docs#supported-languages)).
   >
   > - **chats**:
   >   - **password**: Password to use with /unlock and gain access to the
-  >   bot (only required for the first time)
+  >   bot (only required for the first time).
   >     ```json
   >     "password": "supersecurepassword123"
   >     ```
@@ -117,7 +120,7 @@ according to your configuration.
 
 # Docker
 ## Manual build
-Build the image and bind `config` directory in the container
+Build the image and bind `config` directory in the container.
 ```bash
 $ docker build . -t edgegpt-telegram-bot --rm
 $ docker run -d -it --name edgegpt -v ./config:/edgegpt/config edgegpt-telegram-bot
@@ -136,31 +139,30 @@ $ docker run -d -it --name edgegpt -v ./config:/edgegpt/config scmanjarrez/edgeg
 # Contributing
 Happy to see you willing to make the project better. In order to make a contribution,
 please respect the following format:
-- Imports sorted with usort
+- Sort imports with `usort`.
   ```bash
   $ usort format *py
   ```
-- Code formatted with black (line lenght 79)
+- Format your code using `black` (line length 79).
   ```bash
   $ black -l 79 *py
   ```
 
-
-
-> If you are using flake8, ignore E203 in .flake8
-> ```
-> [flake8]
-> extend-ignore = E203
-> ```
+  > If you are using flake8, add E203 to .flake8 ignore list
+  > ```
+  > [flake8]
+  > extend-ignore = E203
+  > ```
 
 ## Pre-commit hooks
-Installation:
+### Installation
 ```bash
-pre-commit install
+$ pre-commit install
 ```
-Run manually:
+
+### Manual execution
 ```bash
-pre-commit run --all-files
+$ pre-commit run --all-files
 ```
 
 ## VSCode project settings
@@ -177,6 +179,7 @@ VSCode should have the following settings in settings.json:
     ],
 }
 ```
+> If you use flake8, add:
 > ```
 > "python.linting.flake8Args": [
 >     "--ignore=E203",

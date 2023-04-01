@@ -3,19 +3,26 @@
 # Copyright (c) 2023 scmanjarrez. All rights reserved.
 # This work is licensed under the terms of the MIT license.
 
+import asyncio
 import html
 import io
 import json
 import logging
 import re
+import subprocess
 import sys
 from functools import partial
 from multiprocessing import Process, Queue
+from pathlib import Path
 from typing import Any, Dict, Tuple, Union
+
+import aiohttp
 
 import database as db
 import edge_tts
+import openai
 import utils as ut
+from aiohttp.web import HTTPException
 from EdgeGPT import ConversationStyle
 from ImageGen import ImageGen
 from telegram import constants, Update
@@ -29,9 +36,10 @@ BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
 REF = re.compile(r"\[\^(\d+)\^\]")
 REF_SP = re.compile(r"(\w+)(\[\^\d+\^\])")
+ASR_API = "https://api.assemblyai.com/v2"
 
 
-class Query:
+class BingAI:
     def __init__(
         self,
         update: Update,
@@ -84,7 +92,7 @@ class Query:
                         )
             if finished:
                 await ut.is_active_conversation(self.update, finished=finished)
-                query = Query(self.update, self.context)
+                query = BingAI(self.update, self.context)
                 await query.run()
         else:
             logging.getLogger("EdgeGPT").error(item["result"]["error"])
@@ -212,7 +220,7 @@ class Query:
             await self.tts(message["text"])
 
 
-class QueryImage(Process):
+class BingImage(Process):
     def __init__(self, prompt: str, queue: Queue):
         Process.__init__(self)
         self.prompt = prompt
@@ -237,3 +245,96 @@ class QueryImage(Process):
         except:  # noqa
             pass
         self.queue.put((images,))
+
+
+async def automatic_speech_recognition(
+    cid: str, fid: str, data: bytearray
+) -> Union[str, None]:
+    if "apis" not in ut.DATA["config"]:
+        logging.getLogger("EdgeGPT").error(
+            "API section not defined. Check templates/config.json"
+        )
+    else:
+        if db.asr_backend(cid) == "whisper":
+            if not ut.apis("openai").startswith("sk-"):
+                logging.getLogger("EdgeGPT").error("OpenAI token not defined")
+            else:
+                return await asr_whisper(fid, data)
+        else:
+            if ut.apis("assemblyai") == "assemblyai_token":
+                logging.getLogger("EdgeGPT").error(
+                    "AssemblyAI token not defined"
+                )
+            else:
+                return await asr_assemblyai(data)
+
+
+async def asr_assemblyai(data: bytearray) -> str:
+    text = "Could not connect to AssemblyAI API. Try again later."
+    try:
+        async with aiohttp.ClientSession(
+            headers={"authorization": ut.apis("assemblyai")}
+        ) as session:
+            async with session.post(f"{ASR_API}/upload", data=data) as req:
+                resp = await req.json()
+                upload = {
+                    "audio_url": resp["upload_url"],
+                    "language_detection": True,
+                }
+            async with session.post(
+                f"{ASR_API}/transcript", json=upload
+            ) as req:
+                resp = await req.json()
+                upload_id = resp["id"]
+                status = resp["status"]
+                while status not in ("completed", "error"):
+                    async with session.get(
+                        f"{ASR_API}/transcript/{upload_id}"
+                    ) as req:
+                        resp = await req.json()
+                        status = resp["status"]
+                        if ut.DEBUG:
+                            logging.getLogger("EdgeGPT-ASR").info(
+                                f"response: {resp}"
+                            )
+                            logging.getLogger("EdgeGPT-ASR").info(
+                                f"{upload_id}: {status}"
+                            )
+                        await asyncio.sleep(5)
+                text = resp["text"]
+    except HTTPException:
+        pass
+    return text
+
+
+async def asr_whisper(fid: str, data: bytearray) -> str:
+    text = None
+    inp = Path(f"/tmp/{fid}.oga")
+    out = Path(f"/tmp/{fid}.mp3")
+    with inp.open("wb") as f:
+        f.write(data)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-i", inp.absolute(), out.absolute()],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except:  # noqa
+        logging.getLogger("EdgeGPT - FFmpeg").error(
+            "Could not convert .oga voice file to .mp3. Check ffmpeg binary"
+        )
+    else:
+        openai.api_key = ut.apis("openai")
+        try:
+            with out.open("rb") as f:
+                resp = openai.Audio.transcribe("whisper-1", f)
+            text = resp["text"]
+        except openai.error.AuthenticationError:
+            logging.getLogger("EdgeGPT - ASR").error(
+                "Invalid openai credentials"
+            )
+        except Exception as e:
+            logging.getLogger("EdgeGPT - ASR").error(e)
+    inp.unlink()
+    out.unlink()
+    return text

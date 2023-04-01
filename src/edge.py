@@ -41,24 +41,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await cmds.tts(update, context)
         elif query.data == "settings_menu":
             await cmds.settings(update, context)
-        elif query.data == "lang_menu":
-            await cmds.lang_menu(update, context)
-        elif query.data.startswith("gender_menu"):
+        elif query.data == "langs_menu":
+            await cmds.langs_menu(update, context)
+        elif query.data.startswith("genders_menu"):
             args = query.data.split("_")
-            await cmds.gender_menu(update, context, args[-1])
-        elif query.data.startswith("voice_menu"):
+            await cmds.genders_menu(update, context, args[-1])
+        elif query.data.startswith("voices_menu"):
             args = query.data.split("_")
-            await cmds.voice_menu(update, context, args[-2], args[-1])
+            await cmds.voices_menu(update, context, args[-2], args[-1])
         elif query.data.startswith("voice_set"):
             args = query.data.split("_")
             db.set_voice(cid, args[-1])
-            await cmds.voice_menu(update, context, args[-3], args[-2])
-        elif query.data == "style_menu":
-            await cmds.style_menu(update, context)
+            await cmds.voices_menu(update, context, args[-3], args[-2])
+        elif query.data == "styles_menu":
+            await cmds.styles_menu(update, context)
         elif query.data.startswith("style_set"):
             args = query.data.split("_")
             db.set_style(cid, args[-1])
-            await cmds.style_menu(update, context)
+            await cmds.styles_menu(update, context)
         elif query.data.startswith("response"):
             args = query.data.split("_")
             await cmds.message(update, context, args[-1])
@@ -69,6 +69,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif query.data == "tts_toggle":
             db.toggle_tts(cid)
             await cmds.tts_menu(update, context)
+        elif query.data == "backends_menu":
+            await cmds.backends_menu(update, context)
+        elif query.data.startswith("backend_menu"):
+            args = query.data.split("_")
+            await cmds.backend_menu(update, context, args[-1])
+        elif query.data.startswith("backend_set"):
+            args = query.data.split("_")
+            if args[-2] == "chat":
+                db.set_chat_backend(cid, args[-1])
+            elif args[-2] == "asr":
+                db.set_asr_backend(cid, args[-1])
+            else:
+                db.set_image_backend(cid, args[-1])
+            await cmds.backend_menu(update, context, args[-2])
 
 
 def setup_handlers(app: ApplicationBuilder) -> None:
