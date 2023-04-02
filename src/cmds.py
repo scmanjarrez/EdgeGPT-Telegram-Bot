@@ -343,7 +343,7 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ut.delete_job(context, f"{action.name}_{cid}")
             if transcription is not None:
                 query = backend.BingAI(update, context, transcription)
-                await query.run()
+                asyncio.ensure_future(query.run())
 
 
 async def message(
@@ -359,7 +359,7 @@ async def message(
                 text = ut.button_query(update, text)
                 callback = True
             query = backend.BingAI(update, context, text, callback=callback)
-            await query.run()
+            asyncio.ensure_future(query.run())
 
 
 async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
