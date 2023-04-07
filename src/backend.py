@@ -23,8 +23,8 @@ import edge_tts
 import openai
 import utils as ut
 from aiohttp.web import HTTPException
+from BingImageCreator import ImageGen
 from EdgeGPT import ConversationStyle
-from ImageGen import ImageGen
 from telegram import constants, Update
 from telegram.ext import ContextTypes
 
@@ -32,8 +32,8 @@ from telegram.ext import ContextTypes
 BCODE = re.compile(r"(?<!\()(```+)")
 BCODE_LANG = re.compile(r"((```+)\w*\n*)")
 CODE = re.compile(r"(?<!\()(`+)(.+?)\1(?!\))")
-BOLD = re.compile(r"(?<![\(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
-ITA = re.compile(r"(?<![\(`\*_])(?:\*([^*`]+?)\*|_([^_``]+?)_)")
+BOLD = re.compile(r"(?<![(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
+ITA = re.compile(r"(?<![(`*_])(?:\*([^*`]+?)\*|_([^_`]+?)_)")
 REF = re.compile(r"\[\^(\d+)\^\]")
 REF_SP = re.compile(r"(\w+)(\[\^\d+\^\])")
 ASR_API = "https://api.assemblyai.com/v2"
@@ -55,6 +55,8 @@ class BingAI:
         self.cid = ut.cid(self.update)
         if self.text is None:
             self.text = update.effective_message.text
+        self._response = None
+        self.expiration = None
 
     async def run(self) -> None:
         if self.callback:
@@ -63,7 +65,9 @@ class BingAI:
         ut.action_schedule(
             self.update, self.context, constants.ChatAction.TYPING
         )
-        self._response = await ut.CONV[self.cid].ask(
+        cur_conv = ut.CONV["current"][self.cid]
+        ut.CONV["all"][self.cid][cur_conv][1] = self.text
+        self._response = await ut.CONV["all"][self.cid][cur_conv][0].ask(
             prompt=self.text,
             conversation_style=getattr(ConversationStyle, db.style(self.cid)),
         )
@@ -74,7 +78,7 @@ class BingAI:
         if item["result"]["value"] == "Success":
             self.expiration = item["conversationExpiryTime"]
             ut.delete_conversation(
-                self.context, str(self.cid), self.expiration
+                self.context, f"{self.cid}_{cur_conv}", self.expiration
             )
             finished = True
             for message in item["messages"]:
@@ -91,6 +95,7 @@ class BingAI:
                             quote=True,
                         )
             if finished:
+                await self.edit.delete()
                 await ut.is_active_conversation(self.update, finished=finished)
                 query = BingAI(self.update, self.context)
                 await query.run()
@@ -103,9 +108,8 @@ class BingAI:
                 )
             await ut.send(self.update, msg)
 
-    def code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
+    def parse_code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
         offset = -1
-        last = None
         while True:
             match = BCODE.search(text, offset + 1)
             if match is not None:
@@ -130,7 +134,7 @@ class BingAI:
         idx = 0
         code = []
         not_code = []
-        for start, end, spad, epad in self.code(text):
+        for start, end, spad, epad in self.parse_code(text):
             not_code.append(text[idx:start])
             code.append(
                 f"<code>"
@@ -155,7 +159,8 @@ class BingAI:
         return (
             f"{text}\n\n<code>Message: "
             f"{throttling['numUserMessagesInConversation']}/"
-            f"{throttling['maxNumUserMessagesInConversation']}</code>"
+            f"{throttling['maxNumUserMessagesInConversation']}</code>\n"
+            f"<code>Conversation ID: {ut.CONV['current'][self.cid]}</code>\n"
         )
 
     async def tts(self, text: str) -> None:
@@ -199,7 +204,7 @@ class BingAI:
         tts = False
         if db.tts(self.cid) == 1:
             tts = True
-        bt_lst = [ut.button([("🆕 New topic", "new")])]
+        bt_lst = [ut.button([("🆕 New conversation", "conv_new")])]
         if not tts:
             bt_lst.insert(0, ut.button([("🗣 Text-to-Speech", "tts")]))
             ut.DATA["msg"][self.cid] = message["text"]
@@ -234,21 +239,25 @@ class BingImage(Process):
         sys.stdout = open("/dev/null", "w")
         with open(ut.path("cookies")) as f:
             data = json.load(f)
+        auth = None
         for ck in data:
             if ck["name"] == "_U":
                 auth = ck["value"]
                 break
-        image_gen = ImageGen(auth)
-        images = None
-        try:
-            images = image_gen.get_images(self.prompt)
-        except:  # noqa
-            pass
-        self.queue.put((images,))
+        if auth is not None:
+            image_gen = ImageGen(auth)
+            images = None
+            try:
+                images = image_gen.get_images(self.prompt)
+            except:  # noqa
+                pass
+            self.queue.put((images,))
+        else:
+            self.queue.put((None,))
 
 
 async def automatic_speech_recognition(
-    cid: str, fid: str, data: bytearray
+    cid: int, fid: str, data: bytearray
 ) -> Union[str, None]:
     if "apis" not in ut.DATA["config"]:
         logging.getLogger("EdgeGPT").error(
@@ -290,18 +299,18 @@ async def asr_assemblyai(data: bytearray) -> str:
                 while status not in ("completed", "error"):
                     async with session.get(
                         f"{ASR_API}/transcript/{upload_id}"
-                    ) as req:
-                        resp = await req.json()
-                        status = resp["status"]
+                    ) as req2:
+                        resp2 = await req2.json()
+                        status = resp2["status"]
                         if ut.DEBUG:
                             logging.getLogger("EdgeGPT-ASR").info(
-                                f"response: {resp}"
+                                f"response: {resp2}"
                             )
                             logging.getLogger("EdgeGPT-ASR").info(
                                 f"{upload_id}: {status}"
                             )
                         await asyncio.sleep(5)
-                text = resp["text"]
+                text = resp2["text"]
     except HTTPException:
         pass
     return text

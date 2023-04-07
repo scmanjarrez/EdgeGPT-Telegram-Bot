@@ -22,10 +22,25 @@ from telegram.ext import ContextTypes
 
 
 HELP = [
-    ("new", "Start a new conversation with the bot"),
+    ("new_conversation", "Start a new conversation with the bot"),
+    ("change_conversation", "Change your current conversation"),
+    ("delete_conversation", "Delete an open conversation"),
     ("image", "Generate images using Bing creator"),
     ("settings", "Change bot settings"),
     ("help", "List of commands"),
+]
+
+HIDDEN = [
+    ("unlock", "Unlock bot functionalities with a password"),
+    (
+        "get <code>&lt;config/cookies&gt;</code>",
+        "Retrieve config.json or cookies.json, respectively",
+    ),
+    (
+        "update <code>&lt;config/cookies&gt;</code>",
+        "Update config.json or cookies.json, respectively",
+    ),
+    ("cancel", "Cancel current update action"),
 ]
 
 
@@ -41,7 +56,7 @@ async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await ut.send(update, "Bot unlocked. Start a conversation with /new")
 
 
-async def new(
+async def new_conversation(
     update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
 ) -> None:
     cid = ut.cid(update)
@@ -52,16 +67,94 @@ async def new(
         await ut.is_active_conversation(update, new=True)
 
 
-async def help(
+async def change_conversation(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
+) -> None:
+    cid = ut.cid(update)
+    ut.add_whitelisted(cid)
+    if db.cached(cid):
+        resp = ut.send
+        if callback:
+            resp = ut.edit
+        if cid in ut.CONV["all"]:
+            cur_conv = ut.CONV["current"][cid]
+            btn_lst = [
+                ut.button(
+                    [
+                        (
+                            conv if conv != cur_conv else f"» {conv} «",
+                            f"conv_set_{conv}",
+                        )
+                    ]
+                )
+                for conv in ut.CONV["all"][cid].keys()
+            ]
+            msg = (
+                f"Your current conversation is <b>{cur_conv}</b>\n\n"
+                f"<b>Last conversation prompt</b>: "
+                f"<code>{ut.CONV['all'][cid][cur_conv][1]}</code>"
+                if cur_conv
+                else "Your don't have an active conversation"
+            )
+            msg2 = "\n\nOpen conversations:" if btn_lst else ""
+            await resp(
+                update,
+                f"{msg}{msg2}",
+                reply_markup=ut.markup(btn_lst) if btn_lst else None,
+            )
+        else:
+            await resp(update, "You don't have open conversations")
+
+
+async def delete_conversation(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
+) -> None:
+    cid = ut.cid(update)
+    ut.add_whitelisted(cid)
+    if db.cached(cid):
+        resp = ut.send
+        if callback:
+            resp = ut.edit
+        if cid in ut.CONV["all"] and ut.CONV["all"][cid]:
+            btn_lst = [
+                ut.button([(conv, f"conv_del_{conv}")])
+                for conv in ut.CONV["all"][cid].keys()
+            ]
+            msg = "Open conversations" if btn_lst else ""
+            await resp(
+                update,
+                f"{msg}",
+                reply_markup=ut.markup(btn_lst) if btn_lst else None,
+            )
+        else:
+            msg = "You don't have open conversations"
+            if callback:
+                msg = "No more open conversations"
+            await resp(update, msg)
+
+
+async def help_usage(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
     cid = ut.cid(update)
     ut.add_whitelisted(cid)
     if db.cached(cid):
-        help_fmt = "\n".join([f"- /{cmd[0]} - {cmd[1]}" for cmd in HELP])
+        help_fmt = [f"- /{cmd[0]} - {cmd[1]}" for cmd in HELP]
+        if cid in ut.chats("admin"):
+            help_fmt.append("\nHidden commands:\n")
+            for cmd in HIDDEN:
+                text = f"- /{cmd[0]} - {cmd[1]}"
+                if cmd[0] == "unlock":
+                    text = (
+                        f"{text}. Current password: "
+                        f"<code>{ut.chats('password')}</code>"
+                    )
+                help_fmt.append(text)
+        help_fmt = "\n".join(help_fmt)
         await ut.send(
-            update, f"The following commands are available:\n\n{help_fmt}"
+            update,
+            f"The following commands are available:\n\n{help_fmt}",
         )
 
 
@@ -164,12 +257,12 @@ async def voices_menu(
             ut.button(
                 [
                     (
-                        voice if voice != cur_voice else f"» {voice} «",
-                        f"voice_set_{language}_{gender}_{voice}",
+                        _voice if _voice != cur_voice else f"» {_voice} «",
+                        f"voice_set_{language}_{gender}_{_voice}",
                     )
                 ]
             )
-            for voice in sorted(voices[language][gender])
+            for _voice in sorted(voices[language][gender])
         ]
         btn_lst.append(
             ut.button(
@@ -409,9 +502,16 @@ async def process_file(
             if ut.STATE[cid] == "config":
                 ut.DATA["config"] = correct
             else:
-                for conv in ut.CONV:
-                    await ut.CONV[conv].close()
-                    ut.CONV[conv] = ut.Chatbot(cookiePath=ut.path("cookies"))
+                for _cid, convs in ut.CONV["all"].items():
+                    to_del = []
+                    for conv_id, (conv, _) in convs.items():
+                        await conv.close()
+                        to_del.append(conv_id)
+                    for conv_id in to_del:
+                        del ut.CONV["all"][cid][conv_id]
+                    status = await ut.create_conversation(update, _cid)
+                    if not status:
+                        break
             await ut.send(
                 update,
                 f"File {ut.STATE[cid]}.json updated successfully",
@@ -449,7 +549,7 @@ async def gather_images(
             data = img_queue.get_nowait()
             ut.delete_job(context, f"{action.name}_{ut.cid(update)}")
             if data[0] is not None:
-                media = [InputMediaPhoto(image) for image in data[0]]
+                media = [InputMediaPhoto(img) for img in data[0]]
                 await update.effective_message.reply_media_group(
                     media,
                     caption=f"<b>You</b>: {prompt}",

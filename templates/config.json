@@ -1,7 +1,7 @@
 {
   "settings": {
     "token": "bot_token",
-    "webhook": true,
+    "webhook": false,
     "log_level": "INFO",
     "ip": "vps_ip",
     "listen": "0.0.0.0",

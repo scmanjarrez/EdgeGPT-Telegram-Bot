@@ -78,7 +78,7 @@ def add_user(cid: int) -> None:
             db.commit()
 
 
-def voice(cid: int) -> int:
+def voice(cid: int) -> str:
     with closing(sql.connect(ut.path("database"))) as db:
         with closing(db.cursor()) as cur:
             cur.execute("SELECT voice FROM users WHERE cid = ?", [cid])
@@ -106,7 +106,7 @@ def toggle_tts(cid: int) -> None:
     with closing(sql.connect(ut.path("database"))) as db:
         with closing(db.cursor()) as cur:
             cur.execute(
-                "UPDATE users SET tts = -tts " "WHERE cid = ?",
+                "UPDATE users SET tts = -tts WHERE cid = ?",
                 [cid],
             )
             db.commit()

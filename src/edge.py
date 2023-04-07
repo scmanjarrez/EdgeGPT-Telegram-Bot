@@ -35,9 +35,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if db.cached(cid):
         query = update.callback_query
         await query.answer()
-        if query.data == "new":
-            await cmds.new(update, context, callback=True)
-        if query.data == "tts":
+        if query.data == "conv_new":
+            await cmds.new_conversation(update, context, callback=True)
+        elif query.data == "conv_change":
+            await cmds.change_conversation(update, context)
+        elif query.data == "conv_delete":
+            await cmds.delete_conversation(update, context)
+        elif query.data.startswith("conv_set"):
+            args = query.data.split("_")
+            if cid in ut.CONV["current"]:
+                ut.CONV["current"][cid] = args[-1]
+            await cmds.change_conversation(update, context, callback=True)
+        elif query.data.startswith("conv_del"):
+            args = query.data.split("_")
+            if cid in ut.CONV["all"]:
+                await ut.CONV["all"][cid][args[-1]][0].close()
+                del ut.CONV["all"][cid][args[-1]]
+                cur_conv = ut.CONV["current"][cid]
+                if cur_conv == args[-1]:
+                    ut.CONV["current"][cid] = ""
+            await cmds.delete_conversation(update, context, callback=True)
+        elif query.data == "tts":
             await cmds.tts(update, context)
         elif query.data == "settings_menu":
             await cmds.settings(update, context)
@@ -85,12 +103,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await cmds.backend_menu(update, context, args[-2])
 
 
-def setup_handlers(app: ApplicationBuilder) -> None:
+def setup_handlers(app: Application) -> None:
     unlock_handler = CommandHandler("unlock", cmds.unlock)
     app.add_handler(unlock_handler)
 
-    new_handler = CommandHandler("new", cmds.new)
+    new_handler = CommandHandler("new_conversation", cmds.new_conversation)
     app.add_handler(new_handler)
+
+    change_handler = CommandHandler(
+        "change_conversation", cmds.change_conversation
+    )
+    app.add_handler(change_handler)
+
+    delete_handler = CommandHandler(
+        "delete_conversation", cmds.delete_conversation
+    )
+    app.add_handler(delete_handler)
 
     image_handler = CommandHandler("image", cmds.image)
     app.add_handler(image_handler)
@@ -98,7 +126,7 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     settings_handler = CommandHandler("settings", cmds.settings)
     app.add_handler(settings_handler)
 
-    help_handler = CommandHandler("help", cmds.help)
+    help_handler = CommandHandler("help", cmds.help_usage)
     app.add_handler(help_handler)
 
     get_handler = CommandHandler("get", cmds.get_file)
@@ -112,6 +140,9 @@ def setup_handlers(app: ApplicationBuilder) -> None:
 
     voice_message_handler = MessageHandler(filters.VOICE, cmds.voice)
     app.add_handler(voice_message_handler)
+
+    unrecognized_handler = MessageHandler(filters.COMMAND, cmds.help_usage)
+    app.add_handler(unrecognized_handler)
 
     message_handler = MessageHandler(
         filters.TEXT & ~filters.UpdateType.EDITED, cmds.message
@@ -127,13 +158,14 @@ def setup_handlers(app: ApplicationBuilder) -> None:
     app.add_handler(CallbackQueryHandler(button_handler))
 
 
-async def close_chats(application: Application) -> None:
-    for chat in ut.CONV.values():
-        await chat.close()
+async def close_conversations(app: Application) -> None:
+    for convs in ut.CONV["all"].values():
+        for conv, _ in convs.values():
+            await conv.close()
 
 
-async def setup_commands(application: Application) -> None:
-    await application.bot.set_my_commands(cmds.HELP)
+async def setup_commands(app: Application) -> None:
+    await app.bot.set_my_commands(cmds.HELP)
 
 
 def get_version():
@@ -211,7 +243,7 @@ if __name__ == "__main__":
             ApplicationBuilder()
             .token(ut.settings("token"))
             .post_init(setup_commands)
-            .post_shutdown(close_chats)
+            .post_shutdown(close_conversations)
             .build()
         )
         setup_handlers(application)
@@ -219,7 +251,7 @@ if __name__ == "__main__":
             if ut.settings("webhook"):
                 application.run_webhook(
                     listen=ut.settings("listen"),
-                    port=ut.settings("port"),
+                    port=int(ut.settings("port")),
                     url_path=ut.settings("token"),
                     cert=ut.settings("cert"),
                     webhook_url=(
