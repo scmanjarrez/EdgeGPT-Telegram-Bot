@@ -11,7 +11,7 @@
   "apis": {
     "openai": "openai_token",
     "assemblyai": "assemblyai_token"
-  }
+  },
   "chats": {
     "password": "password_to_enable_bot",
     "id": ["list", "of", "allowed", "telegram", "ids"],
