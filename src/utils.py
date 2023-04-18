@@ -193,11 +193,15 @@ async def send(
     quote: bool = False,
     reply_markup: InlineKeyboardMarkup = None,
 ) -> Message:
-    return await update.effective_message.reply_html(
+    message = update.effective_message
+    return await message.reply_html(
         text,
         disable_web_page_preview=True,
         quote=quote,
         reply_markup=reply_markup,
+        message_thread_id=(
+            message.message_thread_id if message.is_topic_message else None
+        ),
     )
 
 

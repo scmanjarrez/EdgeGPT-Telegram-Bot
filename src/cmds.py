@@ -94,7 +94,7 @@ async def change_conversation(
                 f"<b>Last conversation prompt</b>: "
                 f"<code>{ut.CONV['all'][cid][cur_conv][1]}</code>"
                 if cur_conv
-                else "Your don't have an active conversation"
+                else "You don't have an active conversation"
             )
             msg2 = "\n\nOpen conversations:" if btn_lst else ""
             await resp(
