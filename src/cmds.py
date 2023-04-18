@@ -429,11 +429,11 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             voice_file = await update.message.voice.get_file()
             data = await voice_file.download_as_bytearray()
             action = constants.ChatAction.RECORD_VOICE
-            ut.action_schedule(update, context, action)
+            job_name = ut.action_schedule(update, context, action)
             transcription = await backend.automatic_speech_recognition(
                 cid, voice_file.file_id, data
             )
-            ut.delete_job(context, f"{action.name}_{cid}")
+            ut.delete_job(context, job_name)
             if transcription is not None:
                 query = backend.BingAI(update, context, transcription)
                 asyncio.ensure_future(query.run())
@@ -543,11 +543,11 @@ async def gather_images(
     img_gen = backend.BingImage(prompt, img_queue)
     img_gen.start()
     action = constants.ChatAction.UPLOAD_PHOTO
-    ut.action_schedule(update, context, action)
+    job_name = ut.action_schedule(update, context, action)
     while True:
         try:
             data = img_queue.get_nowait()
-            ut.delete_job(context, f"{action.name}_{ut.cid(update)}")
+            ut.delete_job(context, job_name)
             if data[0] is not None:
                 media = [InputMediaPhoto(img) for img in data[0]]
                 await update.effective_message.reply_media_group(

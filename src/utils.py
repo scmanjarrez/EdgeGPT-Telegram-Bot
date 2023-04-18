@@ -304,23 +304,31 @@ async def is_active_conversation(
 
 
 async def send_action(context: ContextTypes.DEFAULT_TYPE) -> None:
-    await context.bot.send_chat_action(context.job.chat_id, context.job.data)
+    action, thread_id = context.job.data
+    await context.bot.send_chat_action(context.job.chat_id, action, thread_id)
 
 
 def action_schedule(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     action: constants.ChatAction,
-) -> None:
+) -> str:
     _cid = cid(update)
+    thread_id = None
+    thread_text = ""
+    if update.effective_message.is_topic_message:
+        thread_id = update.effective_message.message_thread_id
+        thread_text = f"_{thread_id}"
+    job_name = f"{action.name}_{_cid}{thread_text}"
     context.job_queue.run_repeating(
         send_action,
         7,
         first=1,
         chat_id=_cid,
-        data=action,
-        name=f"{action.name}_{_cid}",
+        data=(action, thread_id),
+        name=job_name,
     )
+    return job_name
 
 
 def generate_link(match: re.Match, references: dict) -> str:

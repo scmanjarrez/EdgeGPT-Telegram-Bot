@@ -62,7 +62,7 @@ class BingAI:
         if self.callback:
             await self.update.effective_message.edit_reply_markup(None)
         self.edit = await ut.send(self.update, f"<b>You</b>: {self.text}")
-        ut.action_schedule(
+        job_name = ut.action_schedule(
             self.update, self.context, constants.ChatAction.TYPING
         )
         cur_conv = ut.CONV["current"][self.cid]
@@ -71,9 +71,7 @@ class BingAI:
             prompt=self.text,
             conversation_style=getattr(ConversationStyle, db.style(self.cid)),
         )
-        ut.delete_job(
-            self.context, f"{constants.ChatAction.TYPING.name}_{self.cid}"
-        )
+        ut.delete_job(self.context, job_name)
         item = self._response["item"]
         if item["result"]["value"] == "Success":
             self.expiration = item["conversationExpiryTime"]
@@ -164,7 +162,7 @@ class BingAI:
         )
 
     async def tts(self, text: str) -> None:
-        ut.action_schedule(
+        job_name = ut.action_schedule(
             self.update, self.context, constants.ChatAction.RECORD_VOICE
         )
         text = REF.sub("", text)
@@ -177,10 +175,7 @@ class BingAI:
                 if message["type"] == "audio":
                     out.write(message["data"])
             out.seek(0)
-            ut.delete_job(
-                self.context,
-                f"{constants.ChatAction.RECORD_VOICE.name}_{self.cid}",
-            )
+            ut.delete_job(self.context, job_name)
             await self.update.effective_message.reply_voice(out)
 
     async def parse_message(self, message: Dict[str, Any]) -> None:
