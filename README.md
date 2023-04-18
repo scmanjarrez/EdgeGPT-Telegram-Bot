@@ -2,8 +2,25 @@
 Telegram bot using [EdgeGPT](https://github.com/acheong08/EdgeGPT)
 unofficial API
 
+### What can I do?
+- Access to Bing Chat without leaving your lovely messaging app!
+- Change Bing Chat conversation styles
+  > Do you want an original and imaginative response?
+  > Or more informative and friendly?
+  > Or you just want a concise and straightforward answer?
+- Start multiple conversations and switch between them
+- Generate Images using Bing (powered by Dall-E)
+- Receive voice messages beside text responses if you don't want to read!
+  > Text-to-Speech powered by Edge-TTS
+- Send voice messages directly instead of typing!
+  > Automatic-Speech-Recognition powered by AssemblyAI or Whisper (OpenAI)
+- Update configuration settings and Bing cookies directly from the bot!
+
+
 **Content**:
 - [Description](#description)
+  - [What can I do?](#what-can-i-do)
+- [Features](#features)
 - [Requirements](#requirements)
 - [Bot commands](#bot-commands)
 - [Run](#run)
