@@ -168,7 +168,7 @@ class BingAI:
         text = REF.sub("", text)
         text = BOLD.sub("\\1\\2", text)
         if ut.DEBUG:
-            logging.getLogger("EdgeGPT - TTS").info(f"\nMessage:\n{text}\n\n")
+            logging.getLogger("Bot").info(f"\nMessage:\n{text}\n\n")
         comm = edge_tts.Communicate(text, db.voice(self.cid))
         with io.BytesIO() as out:
             async for message in comm.stream():
@@ -239,36 +239,36 @@ class BingImage(Process):
             if ck["name"] == "_U":
                 auth = ck["value"]
                 break
+        msg = "Invalid cookies"
         if auth is not None:
             image_gen = ImageGen(auth)
             images = None
             try:
                 images = image_gen.get_images(self.prompt)
-            except:  # noqa
-                pass
-            self.queue.put((images,))
+            except Exception as e:  # noqa
+                logging.getLogger("BingImageCreator").error(msg)
+                msg = e.args[0]
+            self.queue.put((images, msg))
         else:
-            self.queue.put((None,))
+            self.queue.put((None, msg))
 
 
 async def automatic_speech_recognition(
     cid: int, fid: str, data: bytearray
 ) -> Union[str, None]:
     if "apis" not in ut.DATA["config"]:
-        logging.getLogger("EdgeGPT").error(
+        logging.getLogger("Bot").error(
             "API section not defined. Check templates/config.json"
         )
     else:
         if db.asr_backend(cid) == "whisper":
             if not ut.apis("openai").startswith("sk-"):
-                logging.getLogger("EdgeGPT").error("OpenAI token not defined")
+                logging.getLogger("Bot").error("OpenAI token not defined")
             else:
                 return await asr_whisper(fid, data)
         else:
             if ut.apis("assemblyai") == "assemblyai_token":
-                logging.getLogger("EdgeGPT").error(
-                    "AssemblyAI token not defined"
-                )
+                logging.getLogger("Bot").error("AssemblyAI token not defined")
             else:
                 return await asr_assemblyai(data)
 
@@ -298,10 +298,10 @@ async def asr_assemblyai(data: bytearray) -> str:
                         resp2 = await req2.json()
                         status = resp2["status"]
                         if ut.DEBUG:
-                            logging.getLogger("EdgeGPT-ASR").info(
+                            logging.getLogger("AssemblyAI").info(
                                 f"response: {resp2}"
                             )
-                            logging.getLogger("EdgeGPT-ASR").info(
+                            logging.getLogger("AssemblyAI").info(
                                 f"{upload_id}: {status}"
                             )
                         await asyncio.sleep(5)
@@ -324,7 +324,7 @@ async def asr_whisper(fid: str, data: bytearray) -> str:
             stderr=subprocess.DEVNULL,
         )
     except:  # noqa
-        logging.getLogger("EdgeGPT - FFmpeg").error(
+        logging.getLogger("FFmpeg").error(
             "Could not convert .oga voice file to .mp3. Check ffmpeg binary"
         )
     else:
@@ -334,11 +334,9 @@ async def asr_whisper(fid: str, data: bytearray) -> str:
                 resp = await openai.Audio.atranscribe("whisper-1", f)
             text = resp["text"]
         except openai.error.AuthenticationError:
-            logging.getLogger("EdgeGPT - ASR").error(
-                "Invalid openai credentials"
-            )
+            logging.getLogger("Bot").error("Invalid OpenAI credentials")
         except Exception as e:
-            logging.getLogger("EdgeGPT - ASR").error(e)
+            logging.getLogger("OpenAI").error(e)
     inp.unlink()
     out.unlink()
     return text

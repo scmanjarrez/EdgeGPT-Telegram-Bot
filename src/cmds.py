@@ -558,7 +558,7 @@ async def gather_images(
             else:
                 await ut.send(
                     update,
-                    "Image could not be generated. Try another prompt",
+                    data[1],
                     quote=True,
                 )
             break

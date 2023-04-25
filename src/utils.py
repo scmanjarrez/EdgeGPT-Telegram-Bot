@@ -264,7 +264,7 @@ async def create_conversation(
     if chat_id is None:
         chat_id = cid(update)
     try:
-        tmp = Chatbot(cookiePath=str(path("cookies")))
+        tmp = Chatbot(cookie_path=str(path("cookies")))
     except Exception as e:
         logging.getLogger("EdgeGPT").error(e)
         await send(update, "EdgeGPT API not available. Try again later.")
