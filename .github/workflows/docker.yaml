@@ -15,8 +15,8 @@ jobs:
       - name: Update legacy version
         run: |
           sed -E -i "s/(LEGACY_VERSION = \")(v[0-9.]+)(\")/\1v${{ github.event.release.tag_name }}\3/" src/edge.py
-          git config user.name github-actions
-          git config user.email github-actions@github.com
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Automated legacy version update"
           git push origin HEAD:master
