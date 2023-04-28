@@ -15,7 +15,7 @@ jobs:
 
       - name: Fetch release version
         run: |
-          latest=$(curl -sL https://api.github.com/repos/acheong08/EdgeGPT/releases/latest | jq -r ".tag_name")
+          latest=$(curl -sL https://pypi.org/pypi/edgegpt/json | jq -r ".info.version")
           curr=$(sed -E -n 's/EdgeGPT==([a-z0-9.]+)/\1/p' requirements.txt)
           echo "new=$([[ "$latest" = "$curr" ]] && echo False || echo True)" >> $GITHUB_ENV
           echo "latest=$latest" >> $GITHUB_ENV
