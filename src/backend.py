@@ -11,6 +11,7 @@ import logging
 import re
 import subprocess
 import sys
+import tempfile
 from functools import partial
 from multiprocessing import Process, Queue
 from pathlib import Path
@@ -313,13 +314,13 @@ async def asr_assemblyai(data: bytearray) -> str:
 
 async def asr_whisper(fid: str, data: bytearray) -> str:
     text = None
-    inp = Path(f"/tmp/{fid}.oga")
-    out = Path(f"/tmp/{fid}.mp3")
-    with inp.open("wb") as f:
-        f.write(data)
+    with tempfile.NamedTemporaryFile(suffix=".oga", delete=False) as inp:
+        inp.write(data)
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as out:
+        pass
     try:
         subprocess.run(
-            ["ffmpeg", "-i", inp.absolute(), out.absolute()],
+            ["ffmpeg", "-y", "-i", inp.name, out.name],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -330,13 +331,13 @@ async def asr_whisper(fid: str, data: bytearray) -> str:
     else:
         openai.api_key = ut.apis("openai")
         try:
-            with out.open("rb") as f:
+            with open(out.name, "rb") as f:
                 resp = await openai.Audio.atranscribe("whisper-1", f)
             text = resp["text"]
         except openai.error.AuthenticationError:
             logging.getLogger("Bot").error("Invalid OpenAI credentials")
         except Exception as e:
             logging.getLogger("OpenAI").error(e)
-    inp.unlink()
-    out.unlink()
+    Path(inp.name).unlink()
+    Path(out.name).unlink()
     return text
