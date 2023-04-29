@@ -81,7 +81,7 @@ class BingAI:
             )
             finished = True
             for message in item["messages"]:
-                if message["author"] == "bot":
+                if message["author"] == "bot" and "messageType" not in message:
                     finished = False
                     if "text" in message:
                         await self.parse_message(message)
