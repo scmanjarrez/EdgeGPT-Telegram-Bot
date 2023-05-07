@@ -105,7 +105,7 @@ class BingAI:
                 msg = (
                     "Reached Bing chat daily quota. Try again tomorrow, sorry!"
                 )
-            await ut.send(self.update, msg)
+            await ut.send(self.update, f"EdgeGPT error: {msg}")
 
     def parse_code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
         offset = -1
