@@ -100,7 +100,7 @@ class BingAI:
                 await query.run()
         else:
             logging.getLogger("EdgeGPT").error(item["result"]["error"])
-            msg = "EdgeGPT API not available. Try again later."
+            msg = item["result"]["error"]
             if item["result"]["value"] == "Throttled":
                 msg = (
                     "Reached Bing chat daily quota. Try again tomorrow, sorry!"
