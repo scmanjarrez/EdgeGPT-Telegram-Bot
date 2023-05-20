@@ -15,6 +15,9 @@ unofficial API
 - Send voice messages directly instead of typing!
   > Automatic-Speech-Recognition powered by AssemblyAI or Whisper (OpenAI)
 - Update configuration settings and Bing cookies directly from the bot!
+- Use the bot from any chat using inline queries
+  > You can continue the conversation in your private chat
+- Generate images from any chat using inline queries
 
 
 **Content**:
@@ -48,6 +51,13 @@ there are some commands that are hidden:
 > /update <config/cookies> - Update config.json or cookies.json, respectively
 > /cancel - Cancel current update action
 > ```
+
+In order to use inline queries, you need to enable them in [@BotFather](https://t.me/BotFather).
+For ease of use, use the placeholder
+```
+type text
+```
+Type can be **query** or **image**.
 
 # Run
 - Install python dependencies.
