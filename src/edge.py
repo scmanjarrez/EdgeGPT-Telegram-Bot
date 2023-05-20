@@ -29,7 +29,7 @@ from telegram.ext import (
     MessageHandler,
 )
 
-LEGACY_VERSION = "v1.0.2"
+LEGACY_VERSION = "v1.1.0"
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
