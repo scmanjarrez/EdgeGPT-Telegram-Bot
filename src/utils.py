@@ -39,6 +39,11 @@ CONV = {"all": {}, "current": {}}
 LOG_FILT = ["Removed job", "Added job", "Job", "Running job", "message="]
 DEBUG = False
 STATE = {}
+MEDIA = {}
+BING = (
+    "http://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/"
+    "Bing_Fluent_Logo.svg/32px-Bing_Fluent_Logo.svg.png"
+)
 
 
 class NoLog(logging.Filter):
@@ -113,7 +118,13 @@ def add_whitelisted(_cid: int) -> None:
 
 
 def cid(update: Update) -> int:
-    return update.effective_chat.id
+    try:
+        return update.effective_chat.id
+    except AttributeError:
+        try:
+            return update.chosen_inline_result.from_user.id
+        except AttributeError:
+            return update.callback_query.from_user.id
 
 
 def is_group(update: Update) -> bool:
@@ -238,6 +249,28 @@ async def edit(
             traceback.print_stack()
 
 
+async def edit_inline(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> None:
+    await context.bot.edit_message_text(
+        text,
+        inline_message_id=update.chosen_inline_result.inline_message_id,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+async def edit_inline_media(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, media: list
+) -> None:
+    await context.bot.edit_message_text(
+        text,
+        inline_message_id=update.chosen_inline_result.inline_message_id,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
 async def remove_keyboard(update: Update) -> None:
     await update.effective_message.edit_reply_markup(None)
 
@@ -316,9 +349,12 @@ def action_schedule(
     _cid = cid(update)
     thread_id = None
     thread_text = ""
-    if update.effective_message.is_topic_message:
-        thread_id = update.effective_message.message_thread_id
-        thread_text = f"_{thread_id}"
+    try:
+        if update.effective_message.is_topic_message:
+            thread_id = update.effective_message.message_thread_id
+            thread_text = f"_{thread_id}"
+    except AttributeError:
+        pass
     job_name = f"{action.name}_{_cid}{thread_text}"
     context.job_queue.run_repeating(
         send_action,

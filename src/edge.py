@@ -21,9 +21,11 @@ from telegram.ext import (
     Application,
     ApplicationBuilder,
     CallbackQueryHandler,
+    ChosenInlineResultHandler,
     CommandHandler,
     ContextTypes,
     filters,
+    InlineQueryHandler,
     MessageHandler,
 )
 
@@ -101,6 +103,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 db.set_image_backend(cid, args[-1])
             await cmds.backend_menu(update, context, args[-2])
+        elif query.data.startswith("inline"):
+            args = query.data.split("_")
+            await cmds.switch_inline_image(
+                update, context, int(args[-3]), args[-2], int(args[-1])
+            )
 
 
 def setup_handlers(app: Application) -> None:
@@ -145,7 +152,8 @@ def setup_handlers(app: Application) -> None:
     app.add_handler(unrecognized_handler)
 
     message_handler = MessageHandler(
-        filters.TEXT & ~filters.UpdateType.EDITED, cmds.message
+        filters.TEXT & ~filters.UpdateType.EDITED & ~filters.VIA_BOT,
+        cmds.message,
     )
     app.add_handler(message_handler)
 
@@ -156,6 +164,10 @@ def setup_handlers(app: Application) -> None:
     app.add_handler(file_handler)
 
     app.add_handler(CallbackQueryHandler(button_handler))
+
+    app.add_handler(InlineQueryHandler(cmds.inline_query))
+
+    app.add_handler(ChosenInlineResultHandler(cmds.inline_message))
 
 
 async def close_conversations(app: Application) -> None:

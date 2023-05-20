@@ -9,6 +9,7 @@ import asyncio
 import json
 from multiprocessing import Queue
 from queue import Empty
+from uuid import uuid4
 
 import backend
 
@@ -16,7 +17,14 @@ import database as db
 import utils as ut
 from EdgeGPT import ConversationStyle
 
-from telegram import constants, InputMediaPhoto, Update
+from telegram import (
+    constants,
+    InlineQueryResultArticle,
+    InlineQueryResultPhoto,
+    InputMediaPhoto,
+    InputTextMessageContent,
+    Update,
+)
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
@@ -537,30 +545,163 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def gather_images(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, prompt: str
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    prompt: str,
+    inline: bool = False,
 ) -> None:
     img_queue = Queue()
     img_gen = backend.BingImage(prompt, img_queue)
     img_gen.start()
     action = constants.ChatAction.UPLOAD_PHOTO
-    job_name = ut.action_schedule(update, context, action)
+    if not inline:
+        job_name = ut.action_schedule(update, context, action)
     while True:
         try:
             data = img_queue.get_nowait()
-            ut.delete_job(context, job_name)
+            if not inline:
+                ut.delete_job(context, job_name)
             if data[0] is not None:
                 media = [InputMediaPhoto(img) for img in data[0]]
-                await update.effective_message.reply_media_group(
-                    media,
-                    caption=f"<b>You</b>: {prompt}",
-                    parse_mode=ParseMode.HTML,
-                )
+                if not inline:
+                    await update.effective_message.reply_media_group(
+                        media,
+                        caption=f"<b>You</b>: {prompt}",
+                        parse_mode=ParseMode.HTML,
+                    )
+                else:
+                    _cid = update.chosen_inline_result.inline_message_id
+                    uuid = update.chosen_inline_result.result_id
+                    _text = " ".join(
+                        update.chosen_inline_result.query.split()[1:]
+                    )
+                    if _cid not in ut.MEDIA:
+                        ut.MEDIA[_cid] = {}
+                    ut.MEDIA[_cid][uuid] = (_text, media)
+                    await context.bot.edit_message_media(
+                        media[0],
+                        inline_message_id=_cid,
+                        reply_markup=ut.markup(
+                            [
+                                ut.button(
+                                    [
+                                        ("<", f"inline_0_{uuid}_-1"),
+                                        (">", f"inline_0_{uuid}_1"),
+                                    ]
+                                )
+                            ]
+                        ),
+                    )
             else:
-                await ut.send(
-                    update,
-                    data[1],
-                    quote=True,
-                )
+                if not inline:
+                    await ut.send(
+                        update,
+                        data[1],
+                        quote=True,
+                    )
+                else:
+                    await ut.edit_inline(update, context, data[1])
             break
         except Empty:
             await asyncio.sleep(3)
+
+
+async def inline_query(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.inline_query.query
+    if not query:
+        return
+
+    args = query.split()
+    if len(args) > 1:
+        _cmd = args[0].lower()
+        _text = " ".join(args[1:])
+        results = []
+        if _cmd == "query":
+            results.append(
+                InlineQueryResultArticle(
+                    id="query",
+                    title=f"Query: {_text}",
+                    input_message_content=InputTextMessageContent(
+                        "<code>Generating answer...</code>",
+                        parse_mode=ParseMode.HTML,
+                    ),
+                    reply_markup=ut.markup(
+                        [ut.button([("🔃 Update 🔃", "nop")])]
+                    ),
+                )
+            )
+        elif _cmd == "image":
+            uuid = uuid4()
+            results.append(
+                InlineQueryResultPhoto(
+                    id=uuid,
+                    title=f"Image: {_text}",
+                    photo_url=ut.BING,
+                    thumb_url=ut.BING,
+                    caption="<code>Generating images...</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=ut.markup(
+                        [ut.button([("🔃 Update 🔃", "nop")])]
+                    ),
+                )
+            )
+        await update.inline_query.answer(results, cache_time=5)
+
+
+async def inline_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cid = ut.cid(update)
+    if db.cached(cid):
+        _args = update.chosen_inline_result.query.split()
+        _cmd = _args[0]
+        _text = " ".join(_args[1:])
+        if _cmd == "query":
+            if cid not in ut.CONV["all"]:
+                ut.CONV["all"][cid] = {}
+                ut.CONV["current"][cid] = ""
+            status = await ut.create_conversation(update, cid)
+            if status:
+                query = backend.BingAI(update, context, _text, inline=True)
+                asyncio.ensure_future(query.run())
+        else:
+            asyncio.ensure_future(
+                gather_images(update, context, _text, inline=True)
+            )
+
+
+async def switch_inline_image(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    index: int,
+    uuid: str,
+    direction: int,
+) -> None:
+    _cid = update.callback_query.inline_message_id
+    if _cid not in ut.MEDIA or uuid not in ut.MEDIA[_cid]:
+        await context.bot.edit_message_caption(
+            caption=(
+                f"<b>You</b>: {ut.MEDIA[_cid][uuid]}\n"
+                f"Could not get other images. Try another query."
+            ),
+            inline_message_id=_cid,
+            reply_markup=None,
+        )
+    else:
+        new_idx = (index + direction) % len(ut.MEDIA[_cid][uuid][1])
+        await context.bot.edit_message_media(
+            ut.MEDIA[_cid][uuid][1][new_idx],
+            inline_message_id=_cid,
+            reply_markup=ut.markup(
+                [
+                    ut.button(
+                        [
+                            ("<", f"inline_{new_idx}_{uuid}_-1"),
+                            (">", f"inline_{new_idx}_{uuid}_1"),
+                        ]
+                    )
+                ]
+            ),
+        )

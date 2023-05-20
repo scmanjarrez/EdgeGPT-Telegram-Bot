@@ -47,11 +47,13 @@ class BingAI:
         context: ContextTypes.DEFAULT_TYPE,
         text: str = None,
         callback: bool = False,
+        inline: bool = False,
     ) -> None:
         self.update = update
         self.context = context
         self.text = text
         self.callback = callback
+        self.inline = inline
         self.edit = None
         self.cid = ut.cid(self.update)
         if self.text is None:
@@ -62,17 +64,19 @@ class BingAI:
     async def run(self) -> None:
         if self.callback:
             await self.update.effective_message.edit_reply_markup(None)
-        self.edit = await ut.send(self.update, f"<b>You</b>: {self.text}")
-        job_name = ut.action_schedule(
-            self.update, self.context, constants.ChatAction.TYPING
-        )
+        if not self.inline:
+            self.edit = await ut.send(self.update, f"<b>You</b>: {self.text}")
+            job_name = ut.action_schedule(
+                self.update, self.context, constants.ChatAction.TYPING
+            )
         cur_conv = ut.CONV["current"][self.cid]
         ut.CONV["all"][self.cid][cur_conv][1] = self.text
         self._response = await ut.CONV["all"][self.cid][cur_conv][0].ask(
             prompt=self.text,
             conversation_style=getattr(ConversationStyle, db.style(self.cid)),
         )
-        ut.delete_job(self.context, job_name)
+        if not self.inline:
+            ut.delete_job(self.context, job_name)
         item = self._response["item"]
         if item["result"]["value"] == "Success":
             self.expiration = item["conversationExpiryTime"]
@@ -86,14 +90,17 @@ class BingAI:
                     if "text" in message:
                         await self.parse_message(message)
                     else:
-                        await ut.send(
-                            self.update,
-                            self.add_throttling(
-                                message["adaptiveCards"][0]["body"][0]["text"]
-                            ),
-                            quote=True,
-                        )
-            if finished:
+                        if not self.inline:
+                            await ut.send(
+                                self.update,
+                                self.add_throttling(
+                                    message["adaptiveCards"][0]["body"][0][
+                                        "text"
+                                    ]
+                                ),
+                                quote=True,
+                            )
+            if finished and not self.inline:
                 await self.edit.delete()
                 await ut.is_active_conversation(self.update, finished=finished)
                 query = BingAI(self.update, self.context)
@@ -105,7 +112,8 @@ class BingAI:
                 msg = (
                     "Reached Bing chat daily quota. Try again tomorrow, sorry!"
                 )
-            await ut.send(self.update, f"EdgeGPT error: {msg}")
+            if not self.inline:
+                await ut.send(self.update, f"EdgeGPT error: {msg}")
 
     def parse_code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
         offset = -1
@@ -204,20 +212,31 @@ class BingAI:
         if not tts:
             bt_lst.insert(0, ut.button([("🗣 Text-to-Speech", "tts")]))
             ut.DATA["msg"][self.cid] = message["text"]
-        if "suggestedResponses" in message and not ut.is_group(self.update):
+        if (
+            "suggestedResponses" in message
+            and not self.inline
+            and not ut.is_group(self.update)
+        ):
             for idx, sug in enumerate(message["suggestedResponses"]):
                 bt_lst.insert(
                     idx, ut.button([(sug["text"], f"response_{idx}")])
                 )
         suggestions = ut.markup(bt_lst)
         question = f"<b>You</b>: {self.text}\n\n"
-        await ut.edit(
-            self.edit,
-            self.add_throttling(f"{question}{text}{extra}"),
-            reply_markup=suggestions,
-        )
+        if not self.inline:
+            await ut.edit(
+                self.edit,
+                self.add_throttling(f"{question}{text}{extra}"),
+                reply_markup=suggestions,
+            )
+        else:
+            await ut.edit_inline(
+                self.update,
+                self.context,
+                self.add_throttling(f"{question}{text}{extra}"),
+            )
 
-        if tts:
+        if tts and not self.inline:
             await self.tts(message["text"])
 
 
