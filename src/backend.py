@@ -64,7 +64,9 @@ class BingAI:
         if self.callback:
             await self.update.effective_message.edit_reply_markup(None)
         if not self.inline:
-            self.edit = await ut.send(self.update, f"<b>You</b>: {self.text}")
+            self.edit = await ut.send(
+                self.update, f"<b>You</b>: {html.escape(self.text)}"
+            )
             job_name = ut.action_schedule(
                 self.update, self.context, constants.ChatAction.TYPING
             )
@@ -221,7 +223,7 @@ class BingAI:
                     idx, ut.button([(sug["text"], f"response_{idx}")])
                 )
         suggestions = ut.markup(bt_lst)
-        question = f"<b>You</b>: {self.text}\n\n"
+        question = f"<b>You</b>: {html.escape(self.text)}\n\n"
         if not self.inline:
             await ut.edit(
                 self.edit,
@@ -270,8 +272,9 @@ class BingImage(Process):
             else:
                 self.queue.put((None, msg))
         else:
-            self.queue.put((None,
-                            "Cookies required to use this functionality."))
+            self.queue.put(
+                (None, "Cookies required to use this functionality.")
+            )
 
 
 async def automatic_speech_recognition(
