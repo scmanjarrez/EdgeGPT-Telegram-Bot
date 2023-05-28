@@ -5,9 +5,9 @@ unofficial API
 ### What can I do?
 - Access to Bing Chat without leaving your lovely messaging app!
 - Change Bing Chat conversation styles
-  > Do you want an original and imaginative response?
+  > Do you want an original and imaginative response? (Creative style powered by gpt4)
   > Or more informative and friendly?
-  > Or you just want a concise and straightforward answer?
+  > What about a more concise and straightforward answer?
 - Start multiple conversations and switch between them
 - Generate Images using Bing (powered by Dall-E)
 - Receive voice messages beside text responses if you don't want to read!
@@ -18,6 +18,8 @@ unofficial API
 - Use the bot from any chat using inline queries
   > You can continue the conversation in your private chat
 - Generate images from any chat using inline queries
+- Did you find a nice question but the bot is already processing another question? Don't worry, send it to the bot
+and it will be processed in order.
 
 
 **Content**:
