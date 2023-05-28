@@ -444,7 +444,7 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ut.delete_job(context, job_name)
             if transcription is not None:
                 query = backend.BingAI(update, context, transcription)
-                asyncio.ensure_future(query.run())
+                asyncio.create_task(query.run())
 
 
 async def message(
@@ -460,7 +460,7 @@ async def message(
                 text = ut.button_query(update, text)
                 callback = True
             query = backend.BingAI(update, context, text, callback=callback)
-            asyncio.ensure_future(query.run())
+            asyncio.create_task(query.run())
 
 
 async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -532,7 +532,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
         if context.args:
-            asyncio.ensure_future(
+            asyncio.create_task(
                 gather_images(update, context, " ".join(context.args))
             )
         else:
@@ -662,12 +662,13 @@ async def inline_message(
             if cid not in ut.CONV["all"]:
                 ut.CONV["all"][cid] = {}
                 ut.CONV["current"][cid] = ""
+                ut.RUN[cid] = {}
             status = await ut.create_conversation(update, cid)
             if status:
                 query = backend.BingAI(update, context, _text, inline=True)
-                asyncio.ensure_future(query.run())
+                asyncio.create_task(query.run())
         else:
-            asyncio.ensure_future(
+            asyncio.create_task(
                 gather_images(update, context, _text, inline=True)
             )
 

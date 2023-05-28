@@ -36,6 +36,7 @@ from telegram.ext import ContextTypes
 PATH = {}
 DATA = {"config": None, "cookies": None, "tts": None, "msg": {}}
 CONV = {"all": {}, "current": {}}
+RUN = {}
 LOG_FILT = ["Removed job", "Added job", "Job", "Running job", "message="]
 DEBUG = False
 STATE = {}
@@ -312,6 +313,7 @@ async def create_conversation(
         conv_id = tmp.chat_hub.request.conversation_id.split("|")[2][:10]
         CONV["all"][chat_id][conv_id] = [tmp, ""]
         CONV["current"][chat_id] = conv_id
+        RUN[chat_id][conv_id] = []
     return conv_id
 
 
@@ -322,6 +324,7 @@ async def is_active_conversation(
     if _cid not in CONV["all"]:
         CONV["all"][_cid] = {}
         CONV["current"][_cid] = ""
+        RUN[_cid] = {}
     if new or finished or not CONV["current"][_cid]:
         if finished:
             await CONV["all"][_cid][CONV["current"][_cid]][0].close()

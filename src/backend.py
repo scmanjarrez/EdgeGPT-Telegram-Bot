@@ -15,6 +15,7 @@ from functools import partial
 from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any, Dict, Tuple, Union
+from uuid import uuid4
 
 import aiohttp
 
@@ -61,22 +62,27 @@ class BingAI:
         self.expiration = None
 
     async def run(self) -> None:
+        cur_conv = ut.CONV["current"][self.cid]
         if self.callback:
             await self.update.effective_message.edit_reply_markup(None)
         if not self.inline:
             self.edit = await ut.send(
                 self.update, f"<b>You</b>: {html.escape(self.text)}"
             )
+            turn = str(uuid4())[:8]
+            ut.RUN[self.cid][cur_conv].append(turn)
+            while turn != ut.RUN[self.cid][cur_conv][0]:
+                await asyncio.sleep(5)
             job_name = ut.action_schedule(
                 self.update, self.context, constants.ChatAction.TYPING
             )
-        cur_conv = ut.CONV["current"][self.cid]
         ut.CONV["all"][self.cid][cur_conv][1] = self.text
         self._response = await ut.CONV["all"][self.cid][cur_conv][0].ask(
             prompt=self.text,
             conversation_style=getattr(ConversationStyle, db.style(self.cid)),
         )
         if not self.inline:
+            ut.RUN[self.cid][cur_conv].remove(turn)
             ut.delete_job(self.context, job_name)
         item = self._response["item"]
         if item["result"]["value"] == "Success":
