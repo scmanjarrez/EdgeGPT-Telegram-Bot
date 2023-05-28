@@ -6,7 +6,7 @@ backports.zoneinfo==0.2.1;python_version<"3.9"
 certifi==2022.12.7
 edge-tts==6.1.3
 EdgeGPT==0.6.8
-BingImageCreator==0.2.0
+BingImageCreator==0.3.0
 h11==0.14.0
 h2==4.1.0
 hpack==4.0.0
