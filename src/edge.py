@@ -249,7 +249,7 @@ if __name__ == "__main__":
 
     setup_parser()
 
-    if ut.exists("config") and ut.exists("cookies"):
+    if ut.exists("config"):
         ut.set_up()
         application = (
             ApplicationBuilder()

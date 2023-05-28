@@ -34,7 +34,7 @@ from telegram.ext import ContextTypes
 
 
 PATH = {}
-DATA = {"config": None, "tts": None, "msg": {}}
+DATA = {"config": None, "cookies": None, "tts": None, "msg": {}}
 CONV = {"all": {}, "current": {}}
 LOG_FILT = ["Removed job", "Added job", "Job", "Running job", "message="]
 DEBUG = False
@@ -78,6 +78,9 @@ def set_up() -> None:
     rename_files()
     with open(path("config")) as f:
         DATA["config"] = json.load(f)
+    if exists("cookies"):
+        with open(path("cookies")) as f:
+            DATA["cookies"] = json.load(f)
     try:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
@@ -297,7 +300,10 @@ async def create_conversation(
     if chat_id is None:
         chat_id = cid(update)
     try:
-        tmp = Chatbot(cookie_path=str(path("cookies")))
+        if DATA["cookies"] is not None:
+            tmp = Chatbot(cookies=DATA["cookies"])
+        else:
+            tmp = Chatbot()
     except Exception as e:
         logging.getLogger("EdgeGPT").error(e)
         await send(update, f"EdgeGPT error: {e.args[0]}")

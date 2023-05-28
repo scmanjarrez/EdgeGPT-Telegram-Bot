@@ -6,7 +6,6 @@
 import asyncio
 import html
 import io
-import json
 import logging
 import re
 import subprocess
@@ -252,25 +251,27 @@ class BingImage(Process):
 
     def run(self):
         sys.stdout = open("/dev/null", "w")
-        with open(ut.path("cookies")) as f:
-            data = json.load(f)
         auth = None
-        for ck in data:
-            if ck["name"] == "_U":
-                auth = ck["value"]
-                break
-        msg = "Invalid cookies"
-        if auth is not None:
-            image_gen = ImageGen(auth)
-            images = None
-            try:
-                images = image_gen.get_images(self.prompt)
-            except Exception as e:  # noqa
-                logging.getLogger("BingImageCreator").error(msg)
-                msg = e.args[0]
-            self.queue.put((images, msg))
+        if ut.DATA["cookies"] is not None:
+            for ck in ut.DATA["cookies"]:
+                if ck["name"] == "_U":
+                    auth = ck["value"]
+                    break
+            msg = "Invalid cookies"
+            if auth is not None:
+                image_gen = ImageGen(auth)
+                images = None
+                try:
+                    images = image_gen.get_images(self.prompt)
+                except Exception as e:  # noqa
+                    logging.getLogger("BingImageCreator").error(msg)
+                    msg = e.args[0]
+                self.queue.put((images, msg))
+            else:
+                self.queue.put((None, msg))
         else:
-            self.queue.put((None, msg))
+            self.queue.put((None,
+                            "Cookies required to use this functionality."))
 
 
 async def automatic_speech_recognition(
