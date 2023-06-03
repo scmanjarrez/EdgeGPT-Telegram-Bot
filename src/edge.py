@@ -194,7 +194,11 @@ async def setup_commands(app: Application) -> None:
 
 def get_version():
     run_cmd = (
-        lambda cmd: subprocess.check_output(cmd, shell=True).decode().strip()
+        lambda cmd: subprocess.check_output(
+            cmd, shell=True, stderr=subprocess.DEVNULL
+        )
+        .decode()
+        .strip()
     )
     try:
         version = run_cmd("git describe --tags --abbrev=0 HEAD")

@@ -21,7 +21,7 @@ unofficial API
 - Did you find a nice question but the bot is already processing another question? Don't worry, send it to the bot
 and it will be processed in order.
 - Load multiple cookies, stop hitting the cap!
-- Reload bot files without killing/starting a new process!
+- Restart the bot from your chat
 
 
 **Content**:
@@ -152,7 +152,8 @@ according to your configuration.
 
 - Run the bot.
   ```bash
-  $ python src/edge.py
+  $ chmod +x src/edge.py
+  $ src/edge.py
   ```
 
   > **Note:** If you run the bot in port 80, it may be needed to run the bot as
