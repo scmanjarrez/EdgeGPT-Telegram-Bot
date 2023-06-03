@@ -148,6 +148,9 @@ def setup_handlers(app: Application) -> None:
     get_handler = CommandHandler("get", cmds.get_file)
     app.add_handler(get_handler)
 
+    reset_handler = CommandHandler("reset", cmds.reset_bot)
+    app.add_handler(reset_handler)
+
     update_handler = CommandHandler("update", cmds.update_file)
     app.add_handler(update_handler)
 

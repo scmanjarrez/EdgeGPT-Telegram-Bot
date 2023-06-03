@@ -20,6 +20,8 @@ unofficial API
 - Generate images from any chat using inline queries
 - Did you find a nice question but the bot is already processing another question? Don't worry, send it to the bot
 and it will be processed in order.
+- Load multiple cookies, stop hitting the cap!
+- Reload bot files without killing/starting a new process!
 
 
 **Content**:
@@ -51,6 +53,7 @@ there are some commands that are hidden:
 > /unlock <passwd> - Unlock bot functionalities with a password
 > /get <config/cookies> - Retrieve config.json or cookies.json, respectively
 > /update <config/cookies> - Update config.json or cookies.json, respectively
+> /reset - Reload bot files
 > /cancel - Cancel current update action
 > ```
 
