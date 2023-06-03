@@ -50,10 +50,7 @@ HIDDEN = [
         "update <code>&lt;config/cookies&gt;</code>",
         "Update config.json or cookies.json, respectively",
     ),
-    (
-        "reset",
-        "Reload bot files",
-    ),
+    ("reset", "Reload bot files"),
     ("cancel", "Cancel current update action"),
 ]
 

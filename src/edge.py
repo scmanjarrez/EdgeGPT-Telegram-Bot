@@ -292,6 +292,4 @@ if __name__ == "__main__":
                 f"in {ut.PATH['config']}. Check README for more info."
             )
     else:
-        logging.error(
-            f"{ut.PATH['config']} or {ut.PATH['cookies']} file missing."
-        )
+        logging.error(f"{ut.PATH['config']} file missing.")
