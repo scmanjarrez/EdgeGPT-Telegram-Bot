@@ -7,6 +7,8 @@
 
 import asyncio
 import json
+import os
+import sys
 from multiprocessing import Queue
 from queue import Empty
 from uuid import uuid4
@@ -47,6 +49,10 @@ HIDDEN = [
     (
         "update <code>&lt;config/cookies&gt;</code>",
         "Update config.json or cookies.json, respectively",
+    ),
+    (
+        "reset",
+        "Reload bot files",
     ),
     ("cancel", "Cancel current update action"),
 ]
@@ -537,23 +543,16 @@ async def update_file(
                 "config/cookies, e.g. /update config, /update cookies",
             )
 
+
 async def reset_bot(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    cid = str(ut.cid(update))
+    cid = ut.cid(update)
     if cid in ut.chats("admin"):
-        # reset bot
-        resp = ut.send
-        await resp(
-            update,
-            f"Resetting bot...",
-        )
-        import os
-        print(os.getcwd())
-        os.system('sudo nohup python3 src/edge.py &')
-        os.kill(os.getpid(), 9)
-    
+        await ut.send(update, "Restarting bot...")
+        os.execv(sys.argv[0], sys.argv)
+
 
 async def process_file(
     update: Update, context: ContextTypes.DEFAULT_TYPE
