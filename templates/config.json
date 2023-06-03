@@ -16,5 +16,9 @@
     "password": "password_to_enable_bot",
     "id": ["list", "of", "allowed", "telegram", "ids"],
     "admin": ["list", "of", "admin", "telegram", "ids"]
-  }
+  },
+  "cookies": [
+    "config/cookies.json",
+    "config/cookies2.json"
+  ]
 }

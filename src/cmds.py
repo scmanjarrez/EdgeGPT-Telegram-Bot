@@ -188,6 +188,8 @@ async def settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ut.button([("Toggle TTS", "tts_menu")]),
             ut.button([("Backends", "backends_menu")]),
         ]
+        if cid in ut.chats("admin"):
+            btn_lst.append(ut.button([("Cookies", "cookies_menu")]))
         resp = ut.send
         if update.callback_query is not None:
             resp = ut.edit
@@ -414,6 +416,43 @@ async def backend_menu(
         )
 
 
+async def cookies_menu(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cid = ut.cid(update)
+    if cid in ut.chats("admin"):
+        btn_lst = [
+            ut.button(
+                [
+                    (
+                        cookie
+                        if cookie != ut.DATA["cookies"]["current"]
+                        else f"» {cookie} «",
+                        f"cookie_set_{cookie}",
+                    )
+                ]
+            )
+            for cookie in ut.DATA["cookies"]["all"]
+        ]
+        btn_lst.append(
+            ut.button(
+                [
+                    ("« Back to Settings", "settings_menu"),
+                ]
+            )
+        )
+        resp = ut.send
+        if update.callback_query is not None:
+            resp = ut.edit
+        await resp(
+            update,
+            f"Your current cookie is "
+            f"<b>{ut.DATA['cookies']['current']}</b>\n\n"
+            f"cookies:",
+            reply_markup=ut.markup(btn_lst),
+        )
+
+
 async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
@@ -467,7 +506,13 @@ async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if cid in ut.chats("admin"):
         if context.args and context.args[0] in ("config", "cookies"):
-            with ut.path(context.args[0]).open() as f:
+            if context.args[0] == "cookies":
+                _path = ut.Path(ut.PATH["dir"]).joinpath(
+                    f"{ut.DATA['cookies']['current']}.json"
+                )
+            else:
+                _path = ut.path("config")
+            with _path.open() as f:
                 await update.effective_message.reply_document(f)
         else:
             await ut.send(
@@ -484,7 +529,7 @@ async def update_file(
     if cid in ut.chats("admin"):
         if context.args and context.args[0] in ("config", "cookies"):
             ut.STATE[cid] = context.args[0]
-            await ut.send(update, f"Ok, send me {context.args[0]}.json file")
+            await ut.send(update, "Ok, send me JSON file")
         else:
             await ut.send(
                 update,
@@ -505,7 +550,13 @@ async def process_file(
         except json.decoder.JSONDecodeError:
             await ut.send(update, "Invalid JSON. Send me a valid JSON file.")
         else:
-            with open(ut.path(ut.STATE[cid]), "w") as f:
+            if ut.STATE[cid] == "cookies":
+                _path = ut.Path(ut.PATH["dir"]).joinpath(
+                    f"{ut.DATA['cookies']['current']}.json"
+                )
+            else:
+                _path = ut.path(ut.STATE[cid])
+            with _path.open("w") as f:
                 json.dump(correct, f, indent=2)
             if ut.STATE[cid] == "config":
                 ut.DATA["config"] = correct

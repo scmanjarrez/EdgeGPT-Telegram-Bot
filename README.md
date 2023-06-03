@@ -138,6 +138,14 @@ according to your configuration.
   >         123123123
   >     ]
   >     ```
+  >
+  > - **cookies**: List of file paths to cookies
+  >     ```json
+  >     "cookies": [
+  >         "config/cookies.json",
+  >         "config/cookies2.json"
+  >     ]
+  >     ```
 
 - Run the bot.
   ```bash
