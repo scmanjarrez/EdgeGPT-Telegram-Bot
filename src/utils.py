@@ -34,10 +34,22 @@ from telegram.ext import ContextTypes
 
 
 PATH = {}
-DATA = {"config": None, "cookies": None, "tts": None, "msg": {}}
+DATA = {
+    "config": None,
+    "cookies": {"all": {}, "current": {}},
+    "tts": None,
+    "msg": {},
+}
 CONV = {"all": {}, "current": {}}
 RUN = {}
-LOG_FILT = ["Removed job", "Added job", "Job", "Running job", "message="]
+LOG_FILT = [
+    "Removed job",
+    "Added job",
+    "Job",
+    "Running job",
+    "message=",
+    "HTTP Request",
+]
 DEBUG = False
 STATE = {}
 MEDIA = {}
@@ -79,9 +91,20 @@ def set_up() -> None:
     rename_files()
     with open(path("config")) as f:
         DATA["config"] = json.load(f)
-    if exists("cookies"):
-        with open(path("cookies")) as f:
-            DATA["cookies"] = json.load(f)
+    for cookie in DATA["config"]["cookies"]:
+        _path = Path(cookie)
+        if _path.exists():
+            with _path.open() as f:
+                DATA["cookies"]["all"][_path.stem] = json.load(f)
+    if "cookies" in DATA["config"]:
+        _path = Path(PATH["dir"]).joinpath("current_cookie")
+        if _path.exists():
+            with _path.open() as f:
+                DATA["cookies"]["current"] = f.read().strip()
+        else:
+            DATA["cookies"]["current"] = list(DATA["cookies"]["all"].keys())[0]
+            with _path.open("w") as f:
+                f.write(DATA["cookies"]["current"])
     try:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
@@ -301,8 +324,9 @@ async def create_conversation(
     if chat_id is None:
         chat_id = cid(update)
     try:
-        if DATA["cookies"] is not None:
-            tmp = Chatbot(cookies=DATA["cookies"])
+        if DATA["cookies"]["all"]:
+            cur_cookies = DATA["cookies"]["current"]
+            tmp = Chatbot(cookies=DATA["cookies"]["all"][cur_cookies])
         else:
             tmp = Chatbot()
     except Exception as e:

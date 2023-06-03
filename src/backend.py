@@ -260,8 +260,9 @@ class BingImage(Process):
     def run(self):
         sys.stdout = open("/dev/null", "w")
         auth = None
-        if ut.DATA["cookies"] is not None:
-            for ck in ut.DATA["cookies"]:
+        if ut.DATA["cookies"]["all"]:
+            cur_cookies = ut.DATA["cookies"]["current"]
+            for ck in ut.DATA["cookies"]["all"][cur_cookies]:
                 if ck["name"] == "_U":
                     auth = ck["value"]
                     break

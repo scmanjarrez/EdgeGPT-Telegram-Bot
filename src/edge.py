@@ -103,6 +103,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 db.set_image_backend(cid, args[-1])
             await cmds.backend_menu(update, context, args[-2])
+        elif query.data == "cookies_menu":
+            await cmds.cookies_menu(update, context)
+        elif query.data.startswith("cookie_set"):
+            args = query.data.split("_")
+            ut.DATA["cookies"]["current"] = args[-1]
+            _path = ut.Path(ut.PATH["dir"]).joinpath("current_cookie")
+            with _path.open("w") as f:
+                f.write(ut.DATA["cookies"]["current"])
+            await cmds.cookies_menu(update, context)
         elif query.data.startswith("inline"):
             args = query.data.split("_")
             await cmds.switch_inline_image(
@@ -210,12 +219,6 @@ def setup_parser() -> None:
         help="Configuration file path. Default: config.json",
     )
     parser.add_argument(
-        "-k",
-        "--cookies",
-        default="cookies.json",
-        help="Cookies file path. Default: cookies.json",
-    )
-    parser.add_argument(
         "-b",
         "--database",
         default="edge.db",
@@ -246,13 +249,17 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
-    logging.getLogger("apscheduler.executors.default").addFilter(ut.NoLog())
-    logging.getLogger("apscheduler.scheduler").addFilter(ut.NoLog())
-    logging.getLogger("openai").addFilter(ut.NoLog())
+    if not ut.DEBUG:
+        logging.getLogger("apscheduler.executors.default").addFilter(
+            ut.NoLog()
+        )
+        logging.getLogger("apscheduler.scheduler").addFilter(ut.NoLog())
+        logging.getLogger("openai").addFilter(ut.NoLog())
+        logging.getLogger("httpx").addFilter(ut.NoLog())
 
     setup_parser()
 
-    if ut.exists("config"):
+    if ut.Path(ut.PATH["dir"]).joinpath(ut.PATH["config"]).exists():
         ut.set_up()
         application = (
             ApplicationBuilder()
