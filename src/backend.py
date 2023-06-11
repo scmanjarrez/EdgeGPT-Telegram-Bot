@@ -43,7 +43,9 @@ REF_ST = re.compile(r"\[\^?(\d+)\^?\]")
 REF_INLINE_ST = re.compile(r"[\n]*\[\^?(\d+)\^?\]:\s*(.+)")
 GEN_RESP = re.compile(r".*Generating answers for you\.\.\.(.*)", re.DOTALL)
 SRCH_RESP = re.compile(r"Searching the web for.*")
+JSON_RESP = re.compile(r"```json(.*?)```", re.DOTALL)
 ASR_API = "https://api.assemblyai.com/v2"
+EDIT_DELAY = 0.5
 
 
 class BingAI:
@@ -84,6 +86,8 @@ class BingAI:
             )
         ut.CONV["all"][self.cid][cur_conv][1] = self.text
         start = time.time()
+        edits = 0
+        delay = 1
         try:
             async for final, resp in ut.CONV["all"][self.cid][cur_conv][
                 0
@@ -94,13 +98,14 @@ class BingAI:
                 ),
             ):
                 current = time.time()
-                if current - start > 0.4 and not final:
-                    text = SRCH_RESP.sub("", resp)
+                if current - start > delay * EDIT_DELAY and not final:
+                    text = JSON_RESP.sub("", resp)
+                    text = SRCH_RESP.sub("", text)
                     resp = GEN_RESP.sub("\\1", text)
                     resp = REF_INLINE_ST.sub("", resp)
                     resp = REF_ST.sub("", resp)
                     resp = resp.strip()
-                    if resp:
+                    if resp and len(resp) < 4096:
                         text = (
                             f"<b>You</b>: {html.escape(self.text)}\n\n"
                             f"<b>Bing</b>: {html.escape(resp)}"
@@ -111,6 +116,10 @@ class BingAI:
                             await ut.edit_inline(
                                 self.update, self.context, text
                             )
+                        edits += 1
+                        if edits > 3:
+                            delay += 1
+                            edits = 0
                     start = current
                 if final:
                     self._response = resp
