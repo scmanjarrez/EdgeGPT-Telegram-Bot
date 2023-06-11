@@ -51,9 +51,13 @@ there are some commands that are hidden:
 > /unlock <passwd> - Unlock bot functionalities with a password
 > /get <config/cookies> - Retrieve config.json or cookies.json, respectively
 > /update <config/cookies> - Update config.json or cookies.json, respectively
+> /history_update - Force chat history update
 > /reset - Reload bot files
 > /cancel - Cancel current update action
 > ```
+
+> Be careful with /history_update. History will be recreated, removing ownership
+> and moving the ownsership to admin1 (if multiple admins are present, to the first one)
 
 In order to use inline queries, you need to enable them in [@BotFather](https://t.me/BotFather).
 For ease of use, use the placeholder

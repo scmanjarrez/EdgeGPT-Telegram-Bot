@@ -135,6 +135,9 @@ async def retrieve_history() -> None:
             data = json.loads(await resp.text())
             if data["chats"]:
                 client_id = data["clientId"]
+                CONV["all"].clear()
+                CONV["current"].clear()
+                RUN.clear()
                 for chat in data["chats"]:
                     name = chat["chatName"]
                     conversation_id = chat["conversationId"]

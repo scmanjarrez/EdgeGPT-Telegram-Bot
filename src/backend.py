@@ -84,31 +84,46 @@ class BingAI:
             )
         ut.CONV["all"][self.cid][cur_conv][1] = self.text
         start = time.time()
-        async for final, resp in ut.CONV["all"][self.cid][cur_conv][
-            0
-        ].ask_stream(
-            prompt=self.text,
-            conversation_style=getattr(ConversationStyle, db.style(self.cid)),
-        ):
-            current = time.time()
-            if current - start > 0.4 and not final:
-                text = SRCH_RESP.sub("", resp)
-                resp = GEN_RESP.sub("\\1", text)
-                resp = REF_INLINE_ST.sub("", resp)
-                resp = REF_ST.sub("", resp)
-                resp = resp.strip()
-                if resp:
-                    text = (
-                        f"<b>You</b>: {html.escape(self.text)}\n\n"
-                        f"<b>Bing</b>: {html.escape(resp)}"
-                    )
-                    if not self.inline:
-                        await ut.edit(self.edit, text)
-                    else:
-                        await ut.edit_inline(self.update, self.context, text)
-                start = current
-            if final:
-                self._response = resp
+        try:
+            async for final, resp in ut.CONV["all"][self.cid][cur_conv][
+                0
+            ].ask_stream(
+                prompt=self.text,
+                conversation_style=getattr(
+                    ConversationStyle, db.style(self.cid)
+                ),
+            ):
+                current = time.time()
+                if current - start > 0.4 and not final:
+                    text = SRCH_RESP.sub("", resp)
+                    resp = GEN_RESP.sub("\\1", text)
+                    resp = REF_INLINE_ST.sub("", resp)
+                    resp = REF_ST.sub("", resp)
+                    resp = resp.strip()
+                    if resp:
+                        text = (
+                            f"<b>You</b>: {html.escape(self.text)}\n\n"
+                            f"<b>Bing</b>: {html.escape(resp)}"
+                        )
+                        if not self.inline:
+                            await ut.edit(self.edit, text)
+                        else:
+                            await ut.edit_inline(
+                                self.update, self.context, text
+                            )
+                    start = current
+                if final:
+                    self._response = resp
+        except KeyError:
+            # Conversation was removed from Bing but we still have a reference
+            await ut.CONV["all"][self.cid][cur_conv][0].close()
+            del ut.CONV["all"][self.cid][cur_conv]
+            ut.CONV["current"][self.cid] = ""
+            await self.edit.delete()
+            await ut.is_active_conversation(self.update, new=True)
+            query = BingAI(self.update, self.context)
+            await query.run()
+            return
         if not self.inline:
             ut.RUN[self.cid][cur_conv].remove(turn)
             ut.delete_job(self.context, job_name)
