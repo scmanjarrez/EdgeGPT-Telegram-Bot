@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from functools import partial
 from multiprocessing import Process, Queue
 from pathlib import Path
@@ -38,6 +39,10 @@ ITA = re.compile(r"(?<![(`*_])(?:\*([^*`]+?)\*|_([^_`]+?)_)")
 REF = re.compile(r"\[\^(\d+)\^\]")
 REF_SP = re.compile(r"(\w+)(\[\^\d+\^\])")
 REF_INLINE = re.compile(r"[\n]*\[\^(\d+)\^\]:\s*(.+)")
+REF_ST = re.compile(r"\[\^?(\d+)\^?\]")
+REF_INLINE_ST = re.compile(r"[\n]*\[\^?(\d+)\^?\]:\s*(.+)")
+GEN_RESP = re.compile(r".*Generating answers for you\.\.\.(.*)", re.DOTALL)
+SRCH_RESP = re.compile(r"Searching the web for.*")
 ASR_API = "https://api.assemblyai.com/v2"
 
 
@@ -78,10 +83,32 @@ class BingAI:
                 self.update, self.context, constants.ChatAction.TYPING
             )
         ut.CONV["all"][self.cid][cur_conv][1] = self.text
-        self._response = await ut.CONV["all"][self.cid][cur_conv][0].ask(
+        start = time.time()
+        async for final, resp in ut.CONV["all"][self.cid][cur_conv][
+            0
+        ].ask_stream(
             prompt=self.text,
             conversation_style=getattr(ConversationStyle, db.style(self.cid)),
-        )
+        ):
+            current = time.time()
+            if current - start > 0.4 and not final:
+                text = SRCH_RESP.sub("", resp)
+                resp = GEN_RESP.sub("\\1", text)
+                resp = REF_INLINE_ST.sub("", resp)
+                resp = REF_ST.sub("", resp)
+                resp = resp.strip()
+                if resp:
+                    text = (
+                        f"<b>You</b>: {html.escape(self.text)}\n\n"
+                        f"<b>Bing</b>: {html.escape(resp)}"
+                    )
+                    if not self.inline:
+                        await ut.edit(self.edit, text)
+                    else:
+                        await ut.edit_inline(self.update, self.context, text)
+                start = current
+            if final:
+                self._response = resp
         if not self.inline:
             ut.RUN[self.cid][cur_conv].remove(turn)
             ut.delete_job(self.context, job_name)

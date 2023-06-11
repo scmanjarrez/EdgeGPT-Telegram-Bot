@@ -10,21 +10,17 @@ unofficial API
   > What about a more concise and straightforward answer?
 - Start multiple conversations and switch between them
 - Generate Images using Bing (powered by Dall-E)
-- Receive voice messages beside text responses if you don't want to read!
-  > Text-to-Speech powered by Edge-TTS
-- Send voice messages directly instead of typing!
+- Text-to-speech responses (powered by edge-tts)
+- Accept voice messages instead of text messages
   > Automatic-Speech-Recognition powered by AssemblyAI or Whisper (OpenAI)
-- Update configuration settings and Bing cookies directly from the bot!
-- Use the bot from any chat using inline queries
-  > You can continue the conversation in your private chat
-- Generate images from any chat using inline queries
-- Did you find a nice question but the bot is already processing another question? Don't worry, send it to the bot
-and it will be processed in order.
-- Load multiple cookies, stop hitting the cap!
+- Configuration/cookie file download and update from the bot
 - Restart the bot from your chat
+- Inline queries to ask for questions or generate images
+  > You can continue conversations from your private chat
+- Enqueue queries. The bot will process each question in order
+- Multi cookie management, stop hitting the daily limit!
 - Permanent chat history (Recent activity in Bing)
 - Export conversations
-
 
 **Content**:
 - [Description](#description)
