@@ -17,7 +17,7 @@ import backend
 
 import database as db
 import utils as ut
-from EdgeGPT import ConversationStyle
+from EdgeGPT.EdgeGPT import ConversationStyle
 
 from telegram import (
     constants,
@@ -33,8 +33,9 @@ from telegram.ext import ContextTypes
 
 HELP = [
     ("new_conversation", "Start a new conversation with the bot"),
-    ("change_conversation", "Change your current conversation"),
-    ("delete_conversation", "Delete an open conversation"),
+    ("change_conversation", "Switch your active conversation"),
+    ("delete_conversation", "Remove a conversation from history"),
+    ("export_conversation", "Export active conversation"),
     ("image", "Generate images using Bing creator"),
     ("settings", "Change bot settings"),
     ("help", "List of commands"),
@@ -50,6 +51,7 @@ HIDDEN = [
         "update <code>&lt;config/cookies&gt;</code>",
         "Update config.json or cookies.json, respectively",
     ),
+    ("history_update", "Force chat history update"),
     ("reset", "Reload bot files"),
     ("cancel", "Cancel current update action"),
 ]
@@ -98,7 +100,7 @@ async def change_conversation(
                         )
                     ]
                 )
-                for conv in ut.CONV["all"][cid].keys()
+                for conv in sorted(ut.CONV["all"][cid].keys())
             ]
             msg = (
                 f"Your current conversation is <b>{cur_conv}</b>\n\n"
@@ -129,7 +131,7 @@ async def delete_conversation(
         if cid in ut.CONV["all"] and ut.CONV["all"][cid]:
             btn_lst = [
                 ut.button([(conv, f"conv_del_{conv}")])
-                for conv in ut.CONV["all"][cid].keys()
+                for conv in sorted(ut.CONV["all"][cid].keys())
             ]
             msg = "Open conversations" if btn_lst else ""
             await resp(
@@ -142,6 +144,47 @@ async def delete_conversation(
             if callback:
                 msg = "No more open conversations"
             await resp(update, msg)
+
+
+async def export_conversation(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
+) -> None:
+    cid = ut.cid(update)
+    ut.add_whitelisted(cid)
+    if db.cached(cid):
+        msg = "You don't have an active conversation"
+        curr = ut.CONV["current"][cid]
+        if curr:
+            hist = await ut.CONV["all"][cid][curr][0].get_conversation()
+            if "messages" in hist:
+                relevant = [
+                    (msg["author"], msg["text"])
+                    for msg in hist["messages"]
+                    if msg["author"] == "user"
+                    or (msg["author"] == "bot" and "messageType" not in msg)
+                ]
+                text = b""
+                for msg in relevant:
+                    title = "## User" if msg[0] == "user" else "## Bing"
+                    plain = backend.REF_INLINE.sub("", msg[1])
+                    plain = backend.REF.sub("", plain)
+                    plain = backend.BOLD.sub("\\1\\2", plain)
+                    plain = backend.ITA.sub("\\1\\2", plain)
+                    plain = backend.CODE.sub("\\1\\2", plain)
+                    text += f"{title}\n{plain}\n\n".encode()
+                await update.effective_message.reply_document(
+                    document=text,
+                    caption="Conversation exported",
+                    filename=f"{curr}.txt",
+                )
+            else:
+                await ut.send(
+                    update,
+                    f"{hist['result']['error']}: "
+                    f"{hist['result']['message']}",
+                )
+        else:
+            await ut.send(update, msg)
 
 
 async def help_usage(
@@ -167,6 +210,26 @@ async def help_usage(
             update,
             f"The following commands are available:\n\n{help_fmt}",
         )
+
+
+async def history_update(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    cid = ut.cid(update)
+    if cid in ut.chats("admin"):
+        await ut.send(update, "Updating chat history...")
+        await ut.retrieve_history()
+
+
+async def reset_bot(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    cid = ut.cid(update)
+    if cid in ut.chats("admin"):
+        await ut.send(update, "Restarting bot...")
+        os.execv(sys.argv[0], sys.argv)
 
 
 async def cancel(
@@ -541,16 +604,6 @@ async def update_file(
             )
 
 
-async def reset_bot(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    cid = ut.cid(update)
-    if cid in ut.chats("admin"):
-        await ut.send(update, "Restarting bot...")
-        os.execv(sys.argv[0], sys.argv)
-
-
 async def process_file(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -564,9 +617,13 @@ async def process_file(
             await ut.send(update, "Invalid JSON. Send me a valid JSON file.")
         else:
             if ut.STATE[cid] == "cookies":
-                _path = ut.Path(ut.PATH["dir"]).joinpath(
-                    f"{ut.DATA['cookies']['current']}.json"
-                )
+                curr = ut.DATA["cookies"]["current"]
+                _path = ut.Path(ut.PATH["dir"]).joinpath(f"{curr}.json")
+                ut.DATA["cookies"]["all"][curr] = correct
+                for ck in correct:
+                    if ck["name"] == "_U":
+                        ut.DATA["cookies"]["_U"][curr] = ck["value"]
+                        break
             else:
                 _path = ut.path(ut.STATE[cid])
             with _path.open("w") as f:
@@ -688,7 +745,8 @@ async def inline_query(
                     id="query",
                     title=f"Query: {_text}",
                     input_message_content=InputTextMessageContent(
-                        "<code>Generating answer...</code>",
+                        f"<b>You</b>: {_text}\n\n"
+                        f"<code>Generating answer...</code>",
                         parse_mode=ParseMode.HTML,
                     ),
                     reply_markup=ut.markup(
@@ -704,7 +762,10 @@ async def inline_query(
                     title=f"Image: {_text}",
                     photo_url=ut.BING,
                     thumb_url=ut.BING,
-                    caption="<code>Generating images...</code>",
+                    caption=(
+                        f"<b>You</b>: {_text}\n\n"
+                        f"<code>Generating images...</code>"
+                    ),
                     parse_mode=ParseMode.HTML,
                     reply_markup=ut.markup(
                         [ut.button([("🔃 Update 🔃", "nop")])]
@@ -723,10 +784,7 @@ async def inline_message(
         _cmd = _args[0]
         _text = " ".join(_args[1:])
         if _cmd == "query":
-            if cid not in ut.CONV["all"]:
-                ut.CONV["all"][cid] = {}
-                ut.CONV["current"][cid] = ""
-                ut.RUN[cid] = {}
+            ut.init_chat(cid)
             status = await ut.create_conversation(update, cid)
             if status:
                 query = backend.BingAI(update, context, _text, inline=True)

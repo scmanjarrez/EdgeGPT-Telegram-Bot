@@ -6,9 +6,11 @@
 # This work is licensed under the terms of the MIT license.
 
 import argparse
+import json
 import logging
 import mimetypes
 import subprocess
+from pathlib import Path
 
 import cmds
 
@@ -41,13 +43,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await cmds.new_conversation(update, context, callback=True)
         elif query.data == "conv_change":
             await cmds.change_conversation(update, context)
-        elif query.data == "conv_delete":
-            await cmds.delete_conversation(update, context)
         elif query.data.startswith("conv_set"):
             args = query.data.split("_")
             if cid in ut.CONV["current"]:
                 ut.CONV["current"][cid] = args[-1]
             await cmds.change_conversation(update, context, callback=True)
+        elif query.data == "conv_delete":
+            await cmds.delete_conversation(update, context)
         elif query.data.startswith("conv_del"):
             args = query.data.split("_")
             if cid in ut.CONV["all"]:
@@ -57,6 +59,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if cur_conv == args[-1]:
                     ut.CONV["current"][cid] = ""
             await cmds.delete_conversation(update, context, callback=True)
+        elif query.data == "conv_export":
+            await cmds.export_conversation(update, context)
         elif query.data == "tts":
             await cmds.tts(update, context)
         elif query.data == "settings_menu":
@@ -136,6 +140,11 @@ def setup_handlers(app: Application) -> None:
     )
     app.add_handler(delete_handler)
 
+    export_handler = CommandHandler(
+        "export_conversation", cmds.export_conversation
+    )
+    app.add_handler(export_handler)
+
     image_handler = CommandHandler("image", cmds.image)
     app.add_handler(image_handler)
 
@@ -147,6 +156,9 @@ def setup_handlers(app: Application) -> None:
 
     get_handler = CommandHandler("get", cmds.get_file)
     app.add_handler(get_handler)
+
+    history_handler = CommandHandler("history_update", cmds.history_update)
+    app.add_handler(history_handler)
 
     reset_handler = CommandHandler("reset", cmds.reset_bot)
     app.add_handler(reset_handler)
@@ -182,10 +194,29 @@ def setup_handlers(app: Application) -> None:
     app.add_handler(ChosenInlineResultHandler(cmds.inline_message))
 
 
-async def close_conversations(app: Application) -> None:
-    for convs in ut.CONV["all"].values():
-        for conv, _ in convs.values():
+async def shutdown(app: Application) -> None:
+    hist = {}
+    for chat_id, convs in ut.CONV["all"].items():
+        if chat_id not in hist:
+            hist[chat_id] = {}
+        for conv_id, (conv, prompt) in convs.items():
+            conversation_id = conv.chat_hub.request.conversation_id
+            conversation_signature = (
+                conv.chat_hub.request.conversation_signature
+            )
+            client_id = conv.chat_hub.request.client_id
+            hist[chat_id][conv_id] = [
+                {
+                    "conversation_id": conversation_id,
+                    "conversation_signature": conversation_signature,
+                    "client_id": client_id,
+                    "invocation_id": 4,
+                },
+                prompt,
+            ]
             await conv.close()
+    with Path(ut.PATH["dir"]).joinpath("history.json").open("w") as f:
+        json.dump(hist, f)
 
 
 async def setup_commands(app: Application) -> None:
@@ -253,23 +284,25 @@ if __name__ == "__main__":
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=logging.INFO,
     )
-    if not ut.DEBUG:
-        logging.getLogger("apscheduler.executors.default").addFilter(
-            ut.NoLog()
-        )
-        logging.getLogger("apscheduler.scheduler").addFilter(ut.NoLog())
-        logging.getLogger("openai").addFilter(ut.NoLog())
-        logging.getLogger("httpx").addFilter(ut.NoLog())
-
     setup_parser()
 
+    if not ut.DEBUG:
+        ut.no_log(
+            [
+                "apscheduler.executors.default",
+                "apscheduler.scheduler",
+                "openai",
+                "httpx",
+            ]
+        )
+
     if ut.Path(ut.PATH["dir"]).joinpath(ut.PATH["config"]).exists():
-        ut.set_up()
+        ut.setup()
         application = (
             ApplicationBuilder()
             .token(ut.settings("token"))
             .post_init(setup_commands)
-            .post_shutdown(close_conversations)
+            .post_shutdown(shutdown)
             .build()
         )
         setup_handlers(application)

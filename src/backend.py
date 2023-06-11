@@ -25,7 +25,7 @@ import openai
 import utils as ut
 from aiohttp.web import HTTPException
 from BingImageCreator import ImageGen
-from EdgeGPT import ConversationStyle
+from EdgeGPT.EdgeGPT import ConversationStyle
 from telegram import constants, Update
 from telegram.ext import ContextTypes
 
@@ -37,6 +37,7 @@ BOLD = re.compile(r"(?<![(`])(?:\*\*([^*`]+?)\*\*|__([^_`]+?)__)")
 ITA = re.compile(r"(?<![(`*_])(?:\*([^*`]+?)\*|_([^_`]+?)_)")
 REF = re.compile(r"\[\^(\d+)\^\]")
 REF_SP = re.compile(r"(\w+)(\[\^\d+\^\])")
+REF_INLINE = re.compile(r"[\n]*\[\^(\d+)\^\]:\s*(.+)")
 ASR_API = "https://api.assemblyai.com/v2"
 
 
@@ -86,10 +87,6 @@ class BingAI:
             ut.delete_job(self.context, job_name)
         item = self._response["item"]
         if item["result"]["value"] == "Success":
-            self.expiration = item["conversationExpiryTime"]
-            ut.delete_conversation(
-                self.context, f"{self.cid}_{cur_conv}", self.expiration
-            )
             finished = True
             for message in item["messages"]:
                 if message["author"] == "bot" and "messageType" not in message:
@@ -144,6 +141,7 @@ class BingAI:
                 break
 
     def markdown_to_html(self, text: str) -> str:
+        text = REF_INLINE.sub("", text)
         text = REF_SP.sub("\\1 \\2", text)
         idx = 0
         code = []
@@ -215,7 +213,10 @@ class BingAI:
         tts = False
         if db.tts(self.cid) == 1:
             tts = True
-        bt_lst = [ut.button([("🆕 New conversation", "conv_new")])]
+        bt_lst = [
+            ut.button([("⤓ Export conversation", "conv_export")]),
+            ut.button([("🆕 New conversation", "conv_new")]),
+        ]
         if not tts:
             bt_lst.insert(0, ut.button([("🗣 Text-to-Speech", "tts")]))
             ut.DATA["msg"][self.cid] = message["text"]
@@ -259,16 +260,11 @@ class BingImage(Process):
 
     def run(self):
         sys.stdout = open("/dev/null", "w")
-        auth = None
         if ut.DATA["cookies"]["all"]:
-            cur_cookies = ut.DATA["cookies"]["current"]
-            for ck in ut.DATA["cookies"]["all"][cur_cookies]:
-                if ck["name"] == "_U":
-                    auth = ck["value"]
-                    break
+            curr = ut.DATA["cookies"]["current"]
             msg = "Invalid cookies"
-            if auth is not None:
-                image_gen = ImageGen(auth)
+            if curr in ut.DATA["cookies"]["_U"]:
+                image_gen = ImageGen(ut.DATA["cookies"]["_U"][curr])
                 images = None
                 try:
                     images = image_gen.get_images(self.prompt)

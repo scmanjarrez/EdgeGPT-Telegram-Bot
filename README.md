@@ -22,6 +22,8 @@ unofficial API
 and it will be processed in order.
 - Load multiple cookies, stop hitting the cap!
 - Restart the bot from your chat
+- Permanent chat history (Recent activity in Bing)
+- Export conversations
 
 
 **Content**:

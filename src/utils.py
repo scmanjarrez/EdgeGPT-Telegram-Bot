@@ -4,6 +4,7 @@
 # This work is licensed under the terms of the MIT license.
 
 
+import asyncio
 import json
 import logging
 import re
@@ -11,14 +12,17 @@ import re
 import traceback
 
 from pathlib import Path
+from threading import Thread
 from typing import Dict, List, Union
+
+import aiohttp
 
 import database as db
 
 import edge_tts
 
-from dateutil.parser import isoparse
-from EdgeGPT import Chatbot
+from EdgeGPT.EdgeGPT import Chatbot
+from EdgeGPT.request import ChatHubRequest
 
 from telegram import (
     constants,
@@ -36,7 +40,7 @@ from telegram.ext import ContextTypes
 PATH = {}
 DATA = {
     "config": None,
-    "cookies": {"all": {}, "current": {}},
+    "cookies": {"all": {}, "current": {}, "_U": {}},
     "tts": None,
     "msg": {},
 }
@@ -57,6 +61,20 @@ BING = (
     "http://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/"
     "Bing_Fluent_Logo.svg/32px-Bing_Fluent_Logo.svg.png"
 )
+CHAT_END = [
+    "https://www.bing.com/turing/conversation/chats",
+    {
+        "x-ms-useragent": (
+            "azsdk-js-api-client-factory/"
+            "1.0.0-beta.1 core-rest-pipeline/1.10.3 OS/Windows"
+        ),
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 "
+            "Safari/537.36 Edg/114.0.1823.41"
+        ),
+    },
+]
 
 
 class NoLog(logging.Filter):
@@ -67,6 +85,11 @@ class NoLog(logging.Filter):
                 logged = False
                 break
         return logged
+
+
+def no_log(loggers: List[str]) -> None:
+    for logger in loggers:
+        logging.getLogger(logger).addFilter(NoLog())
 
 
 def rename_files() -> None:
@@ -84,7 +107,57 @@ def rename_files() -> None:
                 tmp.rename(cfg.joinpath(v))
 
 
-def set_up() -> None:
+def init_chat(chat_id: int) -> None:
+    if chat_id not in CONV["all"]:
+        CONV["all"][chat_id] = {}
+        CONV["current"][chat_id] = ""
+        RUN[chat_id] = {}
+
+
+def load_chat(conv_data: List, chat_id: int = None) -> None:
+    short = conv_data[0]["conversation_id"].split("|")[2][:10]
+    if chat_id is None:
+        chat_id = chats("admin")[0]
+    init_chat(chat_id)
+    if short not in CONV["all"][chat_id]:
+        tmp = create_chatbot()
+        tmp.chat_hub.request = ChatHubRequest(**conv_data[0])
+        CONV["all"][chat_id][short] = [tmp, conv_data[1]]
+        RUN[chat_id][short] = []
+
+
+async def retrieve_history() -> None:
+    curr = DATA["cookies"]["current"]
+    head = CHAT_END[1].copy()
+    head["Cookie"] = "SUID=A; _U={};".format(DATA["cookies"]["_U"][curr])
+    async with aiohttp.ClientSession(headers=head) as session:
+        async with session.get(CHAT_END[0]) as resp:
+            data = json.loads(await resp.text())
+            if data["chats"]:
+                client_id = data["clientId"]
+                for chat in data["chats"]:
+                    name = chat["chatName"]
+                    conversation_id = chat["conversationId"]
+                    signature = chat["conversationSignature"]
+                    thread = Thread(
+                        target=load_chat,
+                        args=(
+                            [
+                                {
+                                    "conversation_id": conversation_id,
+                                    "conversation_signature": signature,
+                                    "client_id": client_id,
+                                    "invocation_id": 4,
+                                },
+                                name,
+                            ],
+                        ),
+                        daemon=True,
+                    )
+                    thread.start()
+
+
+def setup() -> None:
     Path(PATH["dir"]).mkdir(exist_ok=True)
     db.setup_db()
     db.update_db()
@@ -96,6 +169,10 @@ def set_up() -> None:
         if _path.exists():
             with _path.open() as f:
                 DATA["cookies"]["all"][_path.stem] = json.load(f)
+            for ck in DATA["cookies"]["all"][_path.stem]:
+                if ck["name"] == "_U":
+                    DATA["cookies"]["_U"][_path.stem] = ck["value"]
+                    break
     if "cookies" in DATA["config"]:
         _path = Path(PATH["dir"]).joinpath("current_cookie")
         if _path.exists():
@@ -105,6 +182,24 @@ def set_up() -> None:
             DATA["cookies"]["current"] = list(DATA["cookies"]["all"].keys())[0]
             with _path.open("w") as f:
                 f.write(DATA["cookies"]["current"])
+        _path = Path(PATH["dir"]).joinpath("history.json")
+        if not _path.exists():
+            loop = asyncio.get_event_loop()
+            loop.create_task(retrieve_history())
+        else:
+            added = []
+            with _path.open() as f:
+                hist = json.load(f)
+                for chat_id, conv in hist.items():
+                    chat_id = int(chat_id)
+                    for _, (conv_metadata, prompt) in conv.items():
+                        thread = Thread(
+                            target=load_chat,
+                            args=([conv_metadata, prompt], chat_id),
+                            daemon=True,
+                        )
+                        thread.start()
+                        added.append(conv_metadata["conversation_id"])
     try:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
@@ -213,18 +308,6 @@ def delete_job(context: ContextTypes.DEFAULT_TYPE, name: str) -> None:
         job.schedule_removal()
 
 
-def delete_conversation(
-    context: ContextTypes.DEFAULT_TYPE, name: str, expiration: str
-) -> None:
-    delete_job(context, name)
-    context.job_queue.run_once(
-        _remove_conversation,
-        isoparse(expiration),
-        data=name.split("_"),
-        name=name,
-    )
-
-
 async def send(
     update: Update,
     text: str,
@@ -318,17 +401,22 @@ async def all_minus_tts_keyboard(update: Update) -> None:
     await update.effective_message.edit_reply_markup(markup(new_kb))
 
 
+def create_chatbot() -> Chatbot:
+    if DATA["cookies"]["all"]:
+        cur_cookies = DATA["cookies"]["current"]
+        tmp = Chatbot(cookies=DATA["cookies"]["all"][cur_cookies])
+    else:
+        tmp = Chatbot()
+    return tmp
+
+
 async def create_conversation(
     update: Update, chat_id: Union[int, None] = None
 ) -> str:
     if chat_id is None:
         chat_id = cid(update)
     try:
-        if DATA["cookies"]["all"]:
-            cur_cookies = DATA["cookies"]["current"]
-            tmp = Chatbot(cookies=DATA["cookies"]["all"][cur_cookies])
-        else:
-            tmp = Chatbot()
+        tmp = create_chatbot()
     except Exception as e:
         logging.getLogger("EdgeGPT").error(e)
         await send(update, f"EdgeGPT error: {e.args[0]}")
@@ -345,10 +433,7 @@ async def is_active_conversation(
     update: Update, new=False, finished=False
 ) -> bool:
     _cid = cid(update)
-    if _cid not in CONV["all"]:
-        CONV["all"][_cid] = {}
-        CONV["current"][_cid] = ""
-        RUN[_cid] = {}
+    init_chat(_cid)
     if new or finished or not CONV["current"][_cid]:
         if finished:
             await CONV["all"][_cid][CONV["current"][_cid]][0].close()
