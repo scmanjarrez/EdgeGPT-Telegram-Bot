@@ -114,7 +114,11 @@ class BingAI:
                     start = current
                 if final:
                     self._response = resp
-        except KeyError:
+        except (KeyError, AttributeError) as e:
+            print(
+                "***  Exception caught in async for: ",
+                e,
+            )
             # Conversation was removed from Bing but we still have a reference
             await ut.CONV["all"][self.cid][cur_conv][0].close()
             del ut.CONV["all"][self.cid][cur_conv]
