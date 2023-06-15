@@ -15,7 +15,9 @@
   "chats": {
     "password": "password_to_enable_bot",
     "id": ["list", "of", "allowed", "telegram", "ids"],
-    "admin": ["list", "of", "admin", "telegram", "ids"]
+    "admin": ["list", "of", "admin", "telegram", "ids"],
+    "remove_chats_on_stop": false,
+    "history": true
   },
   "cookies": [
     "config/cookies.json",

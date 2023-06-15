@@ -176,7 +176,7 @@ def setup() -> None:
                 if ck["name"] == "_U":
                     DATA["cookies"]["_U"][_path.stem] = ck["value"]
                     break
-    if "cookies" in DATA["config"]:
+    if DATA["cookies"]["all"]:
         _path = Path(PATH["dir"]).joinpath("current_cookie")
         if _path.exists():
             with _path.open() as f:
@@ -185,24 +185,25 @@ def setup() -> None:
             DATA["cookies"]["current"] = list(DATA["cookies"]["all"].keys())[0]
             with _path.open("w") as f:
                 f.write(DATA["cookies"]["current"])
-        _path = Path(PATH["dir"]).joinpath("history.json")
-        if not _path.exists():
-            loop = asyncio.get_event_loop()
-            loop.create_task(retrieve_history())
-        else:
-            added = []
-            with _path.open() as f:
-                hist = json.load(f)
-                for chat_id, conv in hist.items():
-                    chat_id = int(chat_id)
-                    for _, (conv_metadata, prompt) in conv.items():
-                        thread = Thread(
-                            target=load_chat,
-                            args=([conv_metadata, prompt], chat_id),
-                            daemon=True,
-                        )
-                        thread.start()
-                        added.append(conv_metadata["conversation_id"])
+        if chats("history"):
+            _path = Path(PATH["dir"]).joinpath("history.json")
+            if not _path.exists():
+                loop = asyncio.get_event_loop()
+                loop.create_task(retrieve_history())
+            else:
+                added = []
+                with _path.open() as f:
+                    hist = json.load(f)
+                    for chat_id, conv in hist.items():
+                        chat_id = int(chat_id)
+                        for _, (conv_metadata, prompt) in conv.items():
+                            thread = Thread(
+                                target=load_chat,
+                                args=([conv_metadata, prompt], chat_id),
+                                daemon=True,
+                            )
+                            thread.start()
+                            added.append(conv_metadata["conversation_id"])
     try:
         logging.getLogger().setLevel(settings("log_level").upper())
     except KeyError:
@@ -329,6 +330,10 @@ async def send(
     )
 
 
+async def no_permissions(update: Update) -> None:
+    await send(update, "🙅 You don't have permissions to run this command")
+
+
 async def edit(
     update_message: Union[Update, Message],
     text: str,
@@ -433,7 +438,10 @@ async def create_conversation(
 
 
 async def is_active_conversation(
-    update: Update, new=False, finished=False
+    update: Update,
+    new: bool = False,
+    finished: bool = False,
+    quiet: bool = False,
 ) -> bool:
     _cid = cid(update)
     init_chat(_cid)
@@ -445,7 +453,7 @@ async def is_active_conversation(
         if not status:
             return False
         group = "Reply to any of my messages to interact with me."
-        if new:
+        if new and not quiet:
             await send(
                 update,
                 (

@@ -49,11 +49,6 @@ there are some commands that are hidden:
 
 > ```
 > /unlock <passwd> - Unlock bot functionalities with a password
-> /get <config/cookies> - Retrieve config.json or cookies.json, respectively
-> /update <config/cookies> - Update config.json or cookies.json, respectively
-> /history_update - Force chat history update
-> /reset - Reload bot files
-> /cancel - Cancel current update action
 > ```
 
 > Be careful with /history_update. History will be recreated, removing ownership
@@ -143,6 +138,11 @@ according to your configuration.
   >         123123123
   >     ]
   >     ```
+  >   - **remove_chats_on_stop**: `true/false` delete/keep chats after bot stop/restart
+  >     (⚠️ WARNING ⚠️: chats retrieved from Bing with /history_update will be deleted
+  >     as well if you enable this feature).
+  >
+  >   - **history**: `true/false` to enable/disable chat history.
   >
   > - **cookies**: List of file paths to cookies
   >     ```json

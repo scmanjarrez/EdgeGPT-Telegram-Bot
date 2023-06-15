@@ -87,29 +87,28 @@ class BingAI:
         ut.CONV["all"][self.cid][cur_conv][1] = self.text
         start = time.time()
         edits = 0
-        delay = 1
-        try:
-            async for final, resp in ut.CONV["all"][self.cid][cur_conv][
-                0
-            ].ask_stream(
-                prompt=self.text,
-                conversation_style=getattr(
-                    ConversationStyle, db.style(self.cid)
-                ),
-            ):
-                current = time.time()
-                if current - start > delay * EDIT_DELAY and not final:
-                    text = JSON_RESP.sub("", resp)
-                    text = SRCH_RESP.sub("", text)
-                    resp = GEN_RESP.sub("\\1", text)
-                    resp = REF_INLINE_ST.sub("", resp)
-                    resp = REF_ST.sub("", resp)
-                    resp = resp.strip()
-                    if resp and len(resp) < 4096:
-                        text = (
-                            f"<b>You</b>: {html.escape(self.text)}\n\n"
-                            f"<b>Bing</b>: {html.escape(resp)}"
-                        )
+        delay = EDIT_DELAY
+        warned = False
+        async for final, resp in ut.CONV["all"][self.cid][cur_conv][
+            0
+        ].ask_stream(
+            prompt=self.text,
+            conversation_style=getattr(ConversationStyle, db.style(self.cid)),
+        ):
+            current = time.time()
+            if current - start > delay and not final:
+                text = JSON_RESP.sub("", resp)
+                text = SRCH_RESP.sub("", text)
+                resp = GEN_RESP.sub("\\1", text)
+                resp = REF_INLINE_ST.sub("", resp)
+                resp = REF_ST.sub("", resp)
+                resp = resp.strip()
+                if resp:
+                    text = (
+                        f"<b>You</b>: {html.escape(self.text)}\n\n"
+                        f"<b>Bing</b>: {html.escape(resp)}"
+                    )
+                    if len(text) < 4000:
                         if not self.inline:
                             await ut.edit(self.edit, text)
                         else:
@@ -117,26 +116,20 @@ class BingAI:
                                 self.update, self.context, text
                             )
                         edits += 1
-                        if edits > 3:
-                            delay += 1
-                            edits = 0
-                    start = current
-                if final:
-                    self._response = resp
-        except (KeyError, AttributeError) as e:
-            print(
-                "***  Exception caught in async for: ",
-                e,
-            )
-            # Conversation was removed from Bing but we still have a reference
-            await ut.CONV["all"][self.cid][cur_conv][0].close()
-            del ut.CONV["all"][self.cid][cur_conv]
-            ut.CONV["current"][self.cid] = ""
-            await self.edit.delete()
-            await ut.is_active_conversation(self.update, new=True)
-            query = BingAI(self.update, self.context)
-            await query.run()
-            return
+                        delay = EDIT_DELAY * 8 if not edits % 8 else EDIT_DELAY
+                    elif not warned:
+                        delay = 9999
+                        text = "Message too long, waiting until final..."
+                        if not self.inline:
+                            await ut.edit(self.edit, text)
+                        else:
+                            await ut.edit_inline(
+                                self.update, self.context, text
+                            )
+                        warned = True
+                start = current
+            if final:
+                self._response = resp
         if not self.inline:
             ut.RUN[self.cid][cur_conv].remove(turn)
             ut.delete_job(self.context, job_name)
@@ -145,6 +138,8 @@ class BingAI:
             finished = True
             for message in item["messages"]:
                 if message["author"] == "bot" and "messageType" not in message:
+                    if message["contentOrigin"] == "TurnLimiter":
+                        break
                     finished = False
                     if "text" in message:
                         await self.parse_message(message)
@@ -248,7 +243,8 @@ class BingAI:
             await self.update.effective_message.reply_voice(out)
 
     async def parse_message(self, message: Dict[str, Any]) -> None:
-        text = self.markdown_to_html(message["text"])
+        self.message_md = message["text"]
+        text = self.markdown_to_html(self.message_md)
         extra = ""
         if "sourceAttributions" in message:
             references = {
@@ -286,25 +282,36 @@ class BingAI:
                 )
         suggestions = ut.markup(bt_lst)
         question = f"<b>You</b>: {html.escape(self.text)}\n\n"
-        if not self.inline:
-            await ut.edit(
-                self.edit,
-                self.add_throttling(f"{question}{text}{extra}"),
-                reply_markup=suggestions,
-            )
+        msg = self.add_throttling(f"{question}{text}{extra}")
+        if len(msg) > 4000:
+            if not self.inline:
+                await ut.edit(
+                    self.edit,
+                    "Sending final message as markdown file...",
+                    reply_markup=suggestions,
+                )
+                await self.update.effective_message.reply_document(
+                    io.BytesIO(self.message_md.encode()), filename="answer.md"
+                )
+            else:
+                await ut.edit_inline(
+                    self.update,
+                    self.context,
+                    "Message too long, can't be sent through "
+                    "inline queries. Use private chat instead",
+                )
         else:
-            await ut.edit_inline(
-                self.update,
-                self.context,
-                self.add_throttling(f"{question}{text}{extra}"),
-            )
+            if not self.inline:
+                await ut.edit(self.edit, msg, reply_markup=suggestions)
+            else:
+                await ut.edit_inline(self.update, self.context, msg)
 
         if tts and not self.inline:
             await self.tts(message["text"])
 
 
 class BingImage(Process):
-    def __init__(self, prompt: str, queue: Queue):
+    def __init__(self, prompt: str, queue: Queue) -> None:
         Process.__init__(self)
         self.prompt = prompt
         self.queue = queue
@@ -313,7 +320,7 @@ class BingImage(Process):
     def __exit__(self):
         sys.stdout.close()
 
-    def run(self):
+    def run(self) -> None:
         sys.stdout = open("/dev/null", "w")
         if ut.DATA["cookies"]["all"]:
             curr = ut.DATA["cookies"]["current"]

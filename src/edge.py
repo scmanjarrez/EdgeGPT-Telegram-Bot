@@ -41,28 +41,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         if query.data == "conv_new":
             await cmds.new_conversation(update, context, callback=True)
-        elif query.data == "conv_change":
-            await cmds.change_conversation(update, context)
         elif query.data.startswith("conv_set"):
             args = query.data.split("_")
             if cid in ut.CONV["current"]:
                 ut.CONV["current"][cid] = args[-1]
-            await cmds.change_conversation(update, context, callback=True)
-        elif query.data == "conv_delete":
-            await cmds.delete_conversation(update, context)
+            await cmds.switch_conversation(update, context, callback=True)
         elif query.data.startswith("conv_del"):
             args = query.data.split("_")
             if cid in ut.CONV["all"]:
-                await ut.CONV["all"][cid][args[-1]][0].close()
-                del ut.CONV["all"][cid][args[-1]]
+                conv_id = args[-1]
+                await ut.CONV["all"][cid][conv_id][0].delete_conversation()
+                await ut.CONV["all"][cid][conv_id][0].close()
+                del ut.CONV["all"][cid][conv_id]
                 cur_conv = ut.CONV["current"][cid]
-                if cur_conv == args[-1]:
+                if conv_id == cur_conv:
                     ut.CONV["current"][cid] = ""
             await cmds.delete_conversation(update, context, callback=True)
         elif query.data == "conv_export":
             await cmds.export_conversation(update, context)
-        elif query.data == "tts":
-            await cmds.tts(update, context)
         elif query.data == "settings_menu":
             await cmds.settings(update, context)
         elif query.data == "langs_menu":
@@ -130,10 +126,10 @@ def setup_handlers(app: Application) -> None:
     new_handler = CommandHandler("new_conversation", cmds.new_conversation)
     app.add_handler(new_handler)
 
-    change_handler = CommandHandler(
-        "change_conversation", cmds.change_conversation
+    switch_handler = CommandHandler(
+        "switch_conversation", cmds.switch_conversation
     )
-    app.add_handler(change_handler)
+    app.add_handler(switch_handler)
 
     delete_handler = CommandHandler(
         "delete_conversation", cmds.delete_conversation
@@ -205,18 +201,22 @@ async def shutdown(app: Application) -> None:
                 conv.chat_hub.request.conversation_signature
             )
             client_id = conv.chat_hub.request.client_id
-            hist[chat_id][conv_id] = [
-                {
-                    "conversation_id": conversation_id,
-                    "conversation_signature": conversation_signature,
-                    "client_id": client_id,
-                    "invocation_id": 4,
-                },
-                prompt,
-            ]
+            if ut.chats("history"):
+                hist[chat_id][conv_id] = [
+                    {
+                        "conversation_id": conversation_id,
+                        "conversation_signature": conversation_signature,
+                        "client_id": client_id,
+                        "invocation_id": 4,
+                    },
+                    prompt,
+                ]
+            if ut.chats("remove_chats_on_stop"):
+                await conv.delete_conversation()
             await conv.close()
-    with Path(ut.PATH["dir"]).joinpath("history.json").open("w") as f:
-        json.dump(hist, f)
+    if hist:
+        with Path(ut.PATH["dir"]).joinpath("history.json").open("w") as f:
+            json.dump(hist, f)
 
 
 async def setup_commands(app: Application) -> None:

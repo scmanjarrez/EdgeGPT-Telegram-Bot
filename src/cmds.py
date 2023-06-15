@@ -32,28 +32,22 @@ from telegram.ext import ContextTypes
 
 
 HELP = [
-    ("new_conversation", "Start a new conversation with the bot"),
-    ("change_conversation", "Switch your active conversation"),
-    ("delete_conversation", "Remove a conversation from history"),
-    ("export_conversation", "Export active conversation"),
-    ("image", "Generate images using Bing creator"),
+    ("new_conversation", "Start new conversation"),
+    ("switch_conversation", "Switch conversation"),
+    ("delete_conversation", "Delete conversation"),
+    ("export_conversation", "Export conversation into text file"),
+    ("image", "Generate images using Bing Image creator"),
     ("settings", "Change bot settings"),
+    ("history_update", "Force chat history update"),
+    ("get", "Retrieve configuration files"),
+    ("update", "Update configuration files"),
+    ("reset", "Reload bot files"),
+    ("cancel", "Cancel current update action"),
     ("help", "List of commands"),
 ]
 
 HIDDEN = [
     ("unlock", "Unlock bot functionalities with a password"),
-    (
-        "get <code>&lt;config/cookies&gt;</code>",
-        "Retrieve config.json or cookies.json, respectively",
-    ),
-    (
-        "update <code>&lt;config/cookies&gt;</code>",
-        "Update config.json or cookies.json, respectively",
-    ),
-    ("history_update", "Force chat history update"),
-    ("reset", "Reload bot files"),
-    ("cancel", "Cancel current update action"),
 ]
 
 
@@ -66,7 +60,9 @@ async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         and not db.cached(cid)
     ):
         db.add_user(cid)
-        await ut.send(update, "Bot unlocked. Start a conversation with /new")
+        await ut.send(
+            update, "Bot unlocked. Start a conversation with /new_conversation"
+        )
 
 
 async def new_conversation(
@@ -80,7 +76,7 @@ async def new_conversation(
         await ut.is_active_conversation(update, new=True)
 
 
-async def change_conversation(
+async def switch_conversation(
     update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
 ) -> None:
     cid = ut.cid(update)
@@ -220,6 +216,8 @@ async def history_update(
     if cid in ut.chats("admin"):
         await ut.send(update, "Updating chat history...")
         await ut.retrieve_history()
+    else:
+        await ut.no_permissions(update)
 
 
 async def reset_bot(
@@ -230,6 +228,8 @@ async def reset_bot(
     if cid in ut.chats("admin"):
         await ut.send(update, "Restarting bot...")
         os.execv(sys.argv[0], sys.argv)
+    else:
+        await ut.no_permissions(update)
 
 
 async def cancel(
@@ -586,6 +586,8 @@ async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "Tell me the file you want to get: "
                 "config/cookies, e.g. /get config, /get cookies",
             )
+    else:
+        await ut.no_permissions(update)
 
 
 async def update_file(
@@ -602,6 +604,8 @@ async def update_file(
                 "Tell me the file you want to update: "
                 "config/cookies, e.g. /update config, /update cookies",
             )
+    else:
+        await ut.no_permissions(update)
 
 
 async def process_file(
