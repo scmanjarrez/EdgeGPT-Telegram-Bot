@@ -165,8 +165,20 @@ def setup() -> None:
     db.setup_db()
     db.update_db()
     rename_files()
+    missing = False
     with open(path("config")) as f:
         DATA["config"] = json.load(f)
+    if "remove_chats_on_stop" not in DATA["config"]["chats"]:
+        DATA["config"]["chats"]["remove_chats_on_stop"] = False
+        missing = True
+    if "history" not in DATA["config"]["chats"]:
+        DATA["config"]["chats"]["history"] = True
+        missing = True
+    if missing:
+        logging.error(
+                "New setting is missing, using default value. "
+                "Check README for more info."
+            )
     for cookie in DATA["config"]["cookies"]:
         _path = Path(cookie)
         if _path.exists():
