@@ -62,4 +62,5 @@ body:
         ## Traceback
   - type: textarea
     attributes:
-      label: Additional information & file uploads
+      label: Logs & file uploads
+      required: true

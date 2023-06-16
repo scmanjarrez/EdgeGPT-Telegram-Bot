@@ -234,6 +234,14 @@ VSCode should have the following settings in settings.json:
     <img src="https://contrib.rocks/image?repo=scmanjarrez/Edge-GPT-Telegram-Bot"/>
 </a>
 
+
+## Support me
+You find this bot helpful and want to support me?
+
+<a href="https://ko-fi.com/Zuzumebachi">
+    <img alt="Ko-fi link to support me" src=".github/KOFI.png" width="25%">
+</a>
+
 # License
     Copyright (c) 2023 scmanjarrez. All rights reserved.
     This work is licensed under the terms of the MIT license.
