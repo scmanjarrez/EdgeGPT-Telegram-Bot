@@ -291,9 +291,10 @@ def markup(buttons: List[List[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
 
 
 def button_query(update: Update, index: str) -> str:
-    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
-        if kb.callback_data == f"response_{index}":
-            return kb.text
+    for kbs in update.effective_message.reply_markup.inline_keyboard:
+        for kb in kbs:
+            if kb.callback_data == f"response_{index}":
+                return kb.text
 
 
 def chunk(lst: List[str], size: int = 6) -> List[str]:
@@ -411,10 +412,6 @@ async def edit_inline_media(
     )
 
 
-async def remove_keyboard(update: Update) -> None:
-    await update.effective_message.edit_reply_markup(None)
-
-
 async def remove_button(update: Update, data: str, equal=True) -> None:
     newkb = []
     for kbs in update.effective_message.reply_markup.inline_keyboard:
@@ -426,6 +423,22 @@ async def remove_button(update: Update, data: str, equal=True) -> None:
                 subkb.append(kb)
         newkb.append(subkb)
     await update.effective_message.edit_reply_markup(markup(newkb))
+
+
+async def remove_conv_buttons(update: Update) -> None:
+    newkb = []
+    for idx, kbs in enumerate(
+        reversed(update.effective_message.reply_markup.inline_keyboard)
+    ):
+        if idx == 1:
+            continue
+        subkb = []
+        for kb in kbs:
+            subkb.append(kb)
+        newkb.append(subkb)
+    await update.effective_message.edit_reply_markup(
+        markup(list(reversed(newkb)))
+    )
 
 
 def create_chatbot() -> Chatbot:

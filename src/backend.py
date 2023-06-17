@@ -49,330 +49,77 @@ EDIT_DELAY = 0.5
 CHAT_LIMIT = 3080
 
 
-class BingAI:
-    def __init__(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-        text: str = None,
-        callback: bool = False,
-        inline: bool = False,
-    ) -> None:
-        self.update = update
-        self.context = context
-        self.text = text
-        self.callback = callback
-        self.inline = inline
-        self.edit = None
-        self.cid = ut.cid(self.update)
-        if self.text is None:
-            self.text = update.effective_message.text
-        self.conv_id = None
-        self.last_edit = None
-        self._response = None
-        self.expiration = None
-        self.user_msg = None
-        self.user_msg_max = None
-
-    async def run(self) -> None:
-        self.conv_id = ut.CONV["current"][self.cid]
-        if self.conv_id not in ut.CONV["all"][self.cid]:
-            self.conv_id = await ut.create_conversation(self.update, self.cid)
-        if self.callback:
-            await self.update.effective_message.edit_reply_markup(None)
-        if not self.inline:
-            self.edit = await ut.send(
-                self.update, f"<b>You</b>: {html.escape(self.text)}"
-            )
-            turn = str(uuid4())[:8]
-            ut.RUN[self.cid][self.conv_id].append(turn)
-            while turn != ut.RUN[self.cid][self.conv_id][0]:
-                await asyncio.sleep(5)
-            job_name = ut.action_schedule(
-                self.update, self.context, constants.ChatAction.TYPING
-            )
-        ut.CONV["all"][self.cid][self.conv_id][1] = self.text
-        start = time.time()
-        edits = 0
-        delay = EDIT_DELAY
-        warned = False
-        async for final, resp in ut.CONV["all"][self.cid][self.conv_id][
-            0
-        ].ask_stream(
-            prompt=self.text,
-            conversation_style=getattr(ConversationStyle, db.style(self.cid)),
-        ):
-            current = time.time()
-            if current - start > delay and not final:
-                text = JSON_RESP.sub("", resp)
-                text = SRCH_RESP.sub("", text)
-                resp = GEN_RESP.sub("\\1", text)
-                resp = REF_INLINE_ST.sub("", resp)
-                resp = REF_ST.sub("", resp)
-                resp = resp.strip()
-                if resp:
-                    text = (
-                        f"<b>You</b>: {html.escape(self.text)}\n\n"
-                        f"<b>Bing</b>: {html.escape(resp)}"
-                    )
-                    if len(text) < CHAT_LIMIT:
-                        if not self.inline:
-                            await ut.edit(self.edit, text)
-                        else:
-                            await ut.edit_inline(
-                                self.update, self.context, text
-                            )
-                        edits += 1
-                        if not edits % 16:  # too many edits, slow down
-                            delay = EDIT_DELAY * 16
-                        elif not edits % 8:
-                            delay = EDIT_DELAY * 8
-                        else:
-                            delay = EDIT_DELAY
-                    elif not warned:
-                        delay = 9999
-                        msg = (
-                            f"{text}\n\n<code>Message too long. "
-                            f"Waiting full response...</code>"
-                        )
-                        if not self.inline:
-                            await ut.edit(self.edit, msg)
-                        else:
-                            await ut.edit_inline(
-                                self.update, self.context, msg
-                            )
-                        warned = True
-                        self.last_edit = text
-                start = current
-            if final:
-                self._response = resp
-        if not self.inline:
-            ut.RUN[self.cid][self.conv_id].remove(turn)
-            ut.delete_job(self.context, job_name)
-        item = self._response["item"]
-        if item["result"]["value"] == "Success":
-            finished = True
-            for message in item["messages"]:
-                if message["author"] == "bot" and "messageType" not in message:
-                    if message["contentOrigin"] == "TurnLimiter":
-                        break
-                    finished = False
-                    if "text" in message:
-                        await self.parse_message(message)
-                    else:
-                        if not self.inline:
-                            await ut.send(
-                                self.update,
-                                self.add_throttling(
-                                    message["adaptiveCards"][0]["body"][0][
-                                        "text"
-                                    ]
-                                ),
-                                quote=True,
-                            )
-            if finished and not self.inline:
-                await self.edit.delete()
-                await ut.is_active_conversation(self.update, finished=finished)
-                query = BingAI(self.update, self.context)
-                await query.run()
-        else:
-            logging.getLogger("EdgeGPT").error(item["result"]["error"])
-            msg = item["result"]["error"]
-            if item["result"]["value"] == "Throttled":
-                msg = (
-                    "Reached Bing chat daily quota. "
-                    "Try again tomorrow, sorry!"
-                )
-            if not self.inline:
-                await ut.send(self.update, f"EdgeGPT error: {msg}")
-
-    def parse_code(self, text: str) -> Union[Tuple[int, int, int, int], None]:
-        offset = -1
-        while True:
-            match = BCODE.search(text, offset + 1)
+def parse_code(text: str) -> Union[Tuple[int, int, int, int], None]:
+    offset = -1
+    while True:
+        match = BCODE.search(text, offset + 1)
+        if match is not None:
+            offset = match.start()
+            start = offset
+            last = match.group(0)
+            padding = 0
+            match = BCODE_LANG.match(text[offset:])
             if match is not None:
-                offset = match.start()
-                start = offset
-                last = match.group(0)
-                padding = 0
-                match = BCODE_LANG.match(text[offset:])
-                if match is not None:
-                    padding = len(match.group(0))
-                offset = text.find(last, offset + 1)
-                offset += len(last)
-                end = offset
-                if start == -1 or end - len(last) == -1:
-                    break
-                yield start, end, padding, len(last)
-            else:
+                padding = len(match.group(0))
+            offset = text.find(last, offset + 1)
+            offset += len(last)
+            end = offset
+            if start == -1 or end - len(last) == -1:
                 break
-
-    def markdown_to_html(self, text: str) -> str:
-        text = REF_INLINE.sub("", text)
-        text = REF_SP.sub("\\1 \\2", text)
-        idx = 0
-        code = []
-        not_code = []
-        for start, end, spad, epad in self.parse_code(text):
-            not_code.append(text[idx:start])
-            code.append(
-                f"<code>"
-                f"{html.escape(text[start+spad:end-epad])}"
-                f"</code>"
-            )
-            idx = end
-        not_code.append(text[idx:])
-        for idx, sub in enumerate(not_code):
-            new = BOLD.sub("<b>\\1\\2</b>", sub)
-            new = ITA.sub("<i>\\1\\2</i>", new)
-            new = CODE.sub("<code>\\2</code>", new)
-            not_code[idx] = new
-        added = 0
-        for idx, cc in enumerate(code, 1):
-            not_code.insert(added + idx, cc)
-            added += 1
-        return "".join(not_code)
-
-    def add_throttling(self, text: str) -> str:
-        if self.user_msg is None:
-            throttling = self._response["item"]["throttling"]
-            self.user_msg = throttling["numUserMessagesInConversation"]
-            self.user_msg_max = throttling["maxNumUserMessagesInConversation"]
-        return (
-            f"{text}\n\n<code>Message: "
-            f"{self.user_msg}/{self.user_msg_max}</code>\n"
-            f"<code>Conversation ID: {self.conv_id}</code>\n"
-        )
-
-    async def tts(self, text: str) -> None:
-        job_name = ut.action_schedule(
-            self.update, self.context, constants.ChatAction.RECORD_VOICE
-        )
-        text = REF.sub("", text)
-        text = BOLD.sub("\\1\\2", text)
-        if ut.DEBUG:
-            logging.getLogger("Bot").info(f"\nMessage:\n{text}\n\n")
-        comm = edge_tts.Communicate(text, db.voice(self.cid))
-        with io.BytesIO() as out:
-            async for message in comm.stream():
-                if message["type"] == "audio":
-                    out.write(message["data"])
-            out.seek(0)
-            ut.delete_job(self.context, job_name)
-            await self.update.effective_message.reply_voice(out)
-
-    async def parse_message(self, message: Dict[str, Any]) -> None:
-        self.message_md = message["text"]
-        text = self.markdown_to_html(self.message_md)
-        extra = ""
-        if "sourceAttributions" in message:
-            references = {
-                str(idx): ref["seeMoreUrl"]
-                for idx, ref in enumerate(message["sourceAttributions"], 1)
-            }
-            full_ref = [
-                f'<a href="{url}">[{idx}]</a>'
-                for idx, url in references.items()
-            ]
-            if references:
-                extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
-            text = REF.sub(
-                partial(ut.generate_link, references=references), text
-            )
-        text = f"<b>Bing</b>: {text}"
-        tts = False
-        if db.tts(self.cid) == 1:
-            tts = True
-        bt_lst = [
-            [
-                ("📄 Export", "conv_export"),
-                ("❌ Delete", f"conv_del_bt_{self.conv_id}"),
-            ],
-            [("✏️ New conversation", "conv_new")],
-        ]
-        if not tts:
-            bt_lst[0].insert(0, ("🗣 TTS", "tts"))
-            ut.DATA["msg"][self.cid] = message["text"]
-        bt_lst = ut.button_list(bt_lst)
-        if (
-            "suggestedResponses" in message
-            and not self.inline
-            and not ut.is_group(self.update)
-        ):
-            for idx, sug in enumerate(message["suggestedResponses"]):
-                bt_lst.insert(
-                    idx, ut.button([(sug["text"], f"response_{idx}")])
-                )
-        suggestions = ut.markup(bt_lst)
-        question = f"<b>You</b>: {html.escape(self.text)}\n\n"
-        msg = self.add_throttling(f"{question}{text}{extra}")
-        if len(msg) < CHAT_LIMIT:
-            if not self.inline:
-                await ut.edit(self.edit, msg, reply_markup=suggestions)
-            else:
-                await ut.edit_inline(self.update, self.context, msg)
+            yield start, end, padding, len(last)
         else:
-            if not self.inline:
-                await ut.edit(
-                    self.edit,
-                    self.add_throttling(
-                        f"{self.last_edit}\n\n"
-                        f"<code>Sending full response as markdown "
-                        f"file...</code>"
-                    ),
-                    reply_markup=suggestions,
-                )
-                await self.update.effective_message.reply_document(
-                    io.BytesIO(self.message_md.encode()),
-                    filename=f"{self.conv_id}_{self.user_msg}.md",
-                )
-            else:
-                await ut.edit_inline(
-                    self.update,
-                    self.context,
-                    self.add_throttling(
-                        f"{self.last_edit}\n\n"
-                        f"<code>Markdown file can't be sent through "
-                        f"inline queries. Switch to this conversation "
-                        f"in a private chat ans ask for the last "
-                        f"answer</code>"
-                    ),
-                )
-
-        if tts and not self.inline:
-            await self.tts(message["text"])
+            break
 
 
-class BingImage(Process):
-    def __init__(self, prompt: str, queue: Queue) -> None:
-        Process.__init__(self)
-        self.prompt = prompt
-        self.queue = queue
-        self.daemon = True
+def markdown_to_html(text: str) -> str:
+    text = REF_INLINE.sub("", text)
+    text = REF_SP.sub("\\1 \\2", text)
+    idx = 0
+    code = []
+    not_code = []
+    for start, end, spad, epad in parse_code(text):
+        not_code.append(text[idx:start])
+        code.append(
+            f"<code>" f"{html.escape(text[start+spad:end-epad])}" f"</code>"
+        )
+        idx = end
+    not_code.append(text[idx:])
+    for idx, sub in enumerate(not_code):
+        new = BOLD.sub("<b>\\1\\2</b>", sub)
+        new = ITA.sub("<i>\\1\\2</i>", new)
+        new = CODE.sub("<code>\\2</code>", new)
+        not_code[idx] = new
+    added = 0
+    for idx, cc in enumerate(code, 1):
+        not_code.insert(added + idx, cc)
+        added += 1
+    return "".join(not_code)
 
-    def __exit__(self):
-        sys.stdout.close()
 
-    def run(self) -> None:
-        sys.stdout = open("/dev/null", "w")
-        if ut.DATA["cookies"]["all"]:
-            curr = ut.DATA["cookies"]["current"]
-            msg = "Invalid cookies"
-            if curr in ut.DATA["cookies"]["_U"]:
-                image_gen = ImageGen(ut.DATA["cookies"]["_U"][curr])
-                images = None
-                try:
-                    images = image_gen.get_images(self.prompt)
-                except Exception as e:  # noqa
-                    logging.getLogger("BingImageCreator").error(msg)
-                    msg = e.args[0]
-                self.queue.put((images, msg))
-            else:
-                self.queue.put((None, msg))
-        else:
-            self.queue.put(
-                (None, "Cookies required to use this functionality.")
-            )
+async def send_tts_audio(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    conv_id: str,
+    msg_idx: str,
+) -> None:
+    job_name = ut.action_schedule(
+        update, context, constants.ChatAction.RECORD_VOICE
+    )
+    text = REF.sub("", text)
+    text = BOLD.sub("\\1\\2", text)
+    if ut.DEBUG:
+        logging.getLogger("Bot").info(f"\nMessage:\n{text}\n\n")
+    comm = edge_tts.Communicate(text, db.voice(ut.cid(update)))
+    with io.BytesIO() as out:
+        async for message in comm.stream():
+            if message["type"] == "audio":
+                out.write(message["data"])
+        out.seek(0)
+        ut.delete_job(context, job_name)
+        await update.effective_message.reply_voice(
+            out, caption=f"{conv_id}_{msg_idx}.ogg"
+        )
 
 
 async def automatic_speech_recognition(
@@ -462,3 +209,269 @@ async def asr_whisper(fid: str, data: bytearray) -> str:
     Path(inp.name).unlink()
     Path(out.name).unlink()
     return text
+
+
+class BingAI:
+    def __init__(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        text: str = None,
+        callback: str = None,
+        inline: bool = False,
+    ) -> None:
+        self.update = update
+        self.context = context
+        self.text = text
+        self.callback = callback
+        self.inline = inline
+        self.edit = None
+        self.cid = ut.cid(self.update)
+        if self.text is None:
+            self.text = update.effective_message.text
+        self.conv_id = None
+        self.last_edit = None
+        self._response = None
+        self.expiration = None
+        self.user_msg = None
+        self.user_msg_max = None
+
+    async def run(self) -> None:
+        self.conv_id = ut.CONV["current"][self.cid]
+        if self.conv_id not in ut.CONV["all"][self.cid]:
+            self.conv_id = await ut.create_conversation(self.update, self.cid)
+        if self.callback is not None:
+            await ut.remove_button(self.update, self.callback)
+        if not self.inline:
+            self.edit = await ut.send(
+                self.update, f"<b>You</b>: {html.escape(self.text)}"
+            )
+            turn = str(uuid4())[:8]
+            ut.RUN[self.cid][self.conv_id].append(turn)
+            while turn != ut.RUN[self.cid][self.conv_id][0]:
+                await asyncio.sleep(5)
+            job_name = ut.action_schedule(
+                self.update, self.context, constants.ChatAction.TYPING
+            )
+        ut.CONV["all"][self.cid][self.conv_id][1] = self.text
+        start = time.time()
+        edits = 0
+        delay = EDIT_DELAY
+        warned = False
+        async for final, resp in ut.CONV["all"][self.cid][self.conv_id][
+            0
+        ].ask_stream(
+            prompt=self.text,
+            conversation_style=getattr(ConversationStyle, db.style(self.cid)),
+        ):
+            current = time.time()
+            if current - start > delay and not final:
+                text = JSON_RESP.sub("", resp)
+                text = SRCH_RESP.sub("", text)
+                resp = GEN_RESP.sub("\\1", text)
+                resp = REF_INLINE_ST.sub("", resp)
+                resp = REF_ST.sub("", resp)
+                resp = resp.strip()
+                if resp:
+                    text = (
+                        f"<b>You</b>: {html.escape(self.text)}\n\n"
+                        f"<b>Bing</b>: {html.escape(resp)}"
+                    )
+                    if len(text) < CHAT_LIMIT:
+                        if not self.inline:
+                            await ut.edit(self.edit, text)
+                        else:
+                            await ut.edit_inline(
+                                self.update, self.context, text
+                            )
+                        edits += 1
+                        if not edits % 16:  # too many edits, slow down
+                            delay = EDIT_DELAY * 16
+                        elif not edits % 8:
+                            delay = EDIT_DELAY * 8
+                        else:
+                            delay = EDIT_DELAY
+                    elif not warned:
+                        delay = 9999
+                        msg = (
+                            f"{text}\n\n<code>Message too long. "
+                            f"Waiting full response...</code>"
+                        )
+                        if not self.inline:
+                            await ut.edit(self.edit, msg)
+                        else:
+                            await ut.edit_inline(
+                                self.update, self.context, msg
+                            )
+                        warned = True
+                        self.last_edit = text
+                start = current
+            if final:
+                self._response = resp
+        if not self.inline:
+            ut.RUN[self.cid][self.conv_id].remove(turn)
+            ut.delete_job(self.context, job_name)
+        item = self._response["item"]
+        if item["result"]["value"] == "Success":
+            self.user_msg = item["throttling"]["numUserMessagesInConversation"]
+            self.user_msg_max = item["throttling"][
+                "maxNumUserMessagesInConversation"
+            ]
+            finished = True
+            for message in item["messages"]:
+                if message["author"] == "bot" and "messageType" not in message:
+                    if message["contentOrigin"] == "TurnLimiter":
+                        break
+                    finished = False
+                    if "text" in message:
+                        await self.parse_message(message)
+                    else:
+                        if not self.inline:
+                            await ut.send(
+                                self.update,
+                                self.add_throttling(
+                                    message["adaptiveCards"][0]["body"][0][
+                                        "text"
+                                    ]
+                                ),
+                                quote=True,
+                            )
+            if finished and not self.inline:
+                await self.edit.delete()
+                await ut.is_active_conversation(self.update, finished=finished)
+                query = BingAI(self.update, self.context)
+                await query.run()
+        else:
+            logging.getLogger("EdgeGPT").error(item["result"]["error"])
+            msg = item["result"]["error"]
+            if item["result"]["value"] == "Throttled":
+                msg = (
+                    "Reached Bing chat daily quota. "
+                    "Try again tomorrow, sorry!"
+                )
+            if not self.inline:
+                await ut.send(self.update, f"EdgeGPT error: {msg}")
+
+    def add_throttling(self, text: str) -> str:
+        return (
+            f"{text}\n\n<code>Message: "
+            f"{self.user_msg}/{self.user_msg_max}</code>\n"
+            f"<code>Conversation ID: {self.conv_id}</code>\n"
+        )
+
+    async def parse_message(self, message: Dict[str, Any]) -> None:
+        self.message_md = message["text"]
+        text = markdown_to_html(self.message_md)
+        extra = ""
+        if "sourceAttributions" in message:
+            references = {
+                str(idx): ref["seeMoreUrl"]
+                for idx, ref in enumerate(message["sourceAttributions"], 1)
+            }
+            full_ref = [
+                f'<a href="{url}">[{idx}]</a>'
+                for idx, url in references.items()
+            ]
+            if references:
+                extra = f"\n\n<b>References</b>: {' '.join(full_ref)}"
+            text = REF.sub(
+                partial(ut.generate_link, references=references), text
+            )
+        text = f"<b>Bing</b>: {text}"
+        tts = False
+        if db.tts(self.cid) == 1:
+            tts = True
+        bt_lst = [
+            [
+                ("📄 Export", f"conv_export_{self.conv_id}"),
+                ("❌ Delete", f"conv_delete_bt_{self.conv_id}"),
+            ],
+            [("✏️ New conversation", "conv_new")],
+        ]
+        if not tts:
+            bt_lst[0].insert(
+                0, ("🗣 TTS", f"tts_send_{self.conv_id}_{self.user_msg}")
+            )
+            if self.cid not in ut.DATA["msg"]:
+                ut.DATA["msg"][self.cid] = {}
+            ut.DATA["msg"][self.cid][self.conv_id] = message["text"]
+        bt_lst = ut.button_list(bt_lst)
+        if (
+            "suggestedResponses" in message
+            and not self.inline
+            and not ut.is_group(self.update)
+        ):
+            for idx, sug in enumerate(message["suggestedResponses"]):
+                bt_lst.insert(
+                    idx, ut.button([(sug["text"], f"response_{idx}")])
+                )
+        suggestions = ut.markup(bt_lst)
+        question = f"<b>You</b>: {html.escape(self.text)}\n\n"
+        msg = self.add_throttling(f"{question}{text}{extra}")
+        if len(msg) < CHAT_LIMIT:
+            if not self.inline:
+                await ut.edit(self.edit, msg, reply_markup=suggestions)
+            else:
+                await ut.edit_inline(self.update, self.context, msg)
+        else:
+            if not self.inline:
+                await ut.edit(
+                    self.edit,
+                    self.add_throttling(
+                        f"{self.last_edit}\n\n"
+                        f"<code>Sending full response as markdown "
+                        f"file...</code>"
+                    ),
+                    reply_markup=suggestions,
+                )
+                await self.update.effective_message.reply_document(
+                    io.BytesIO(self.message_md.encode()),
+                    filename=f"{self.conv_id}_{self.user_msg}.md",
+                )
+            else:
+                await ut.edit_inline(
+                    self.update,
+                    self.context,
+                    self.add_throttling(
+                        f"{self.last_edit}\n\n"
+                        f"<code>Markdown file can't be sent through "
+                        f"inline queries. Switch to this conversation "
+                        f"in a private chat ans ask for the last "
+                        f"answer</code>"
+                    ),
+                )
+
+        if tts and not self.inline:
+            await send_tts_audio(message["text"])
+
+
+class BingImage(Process):
+    def __init__(self, prompt: str, queue: Queue) -> None:
+        Process.__init__(self)
+        self.prompt = prompt
+        self.queue = queue
+        self.daemon = True
+
+    def __exit__(self):
+        sys.stdout.close()
+
+    def run(self) -> None:
+        sys.stdout = open("/dev/null", "w")
+        if ut.DATA["cookies"]["all"]:
+            curr = ut.DATA["cookies"]["current"]
+            msg = "Invalid cookies"
+            if curr in ut.DATA["cookies"]["_U"]:
+                image_gen = ImageGen(ut.DATA["cookies"]["_U"][curr])
+                images = None
+                try:
+                    images = image_gen.get_images(self.prompt)
+                except Exception as e:  # noqa
+                    logging.getLogger("BingImageCreator").error(msg)
+                    msg = e.args[0]
+                self.queue.put((images, msg))
+            else:
+                self.queue.put((None, msg))
+        else:
+            self.queue.put(
+                (None, "Cookies required to use this functionality.")
+            )

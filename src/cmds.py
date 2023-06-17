@@ -71,8 +71,6 @@ async def new_conversation(
     cid = ut.cid(update)
     ut.add_whitelisted(cid)
     if db.cached(cid):
-        if callback:
-            await ut.remove_keyboard(update)
         await ut.is_active_conversation(update, new=True)
 
 
@@ -126,7 +124,7 @@ async def delete_conversation(
             resp = ut.edit
         if cid in ut.CONV["all"] and ut.CONV["all"][cid]:
             btn_lst = [
-                ut.button([(conv, f"conv_del_{conv}")])
+                ut.button([(conv, f"conv_delete_{conv}")])
                 for conv in sorted(ut.CONV["all"][cid].keys())
             ]
             msg = (
@@ -147,15 +145,14 @@ async def delete_conversation(
 
 
 async def export_conversation(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, callback: bool = False
+    update: Update, context: ContextTypes.DEFAULT_TYPE, conv_id: str
 ) -> None:
     cid = ut.cid(update)
     ut.add_whitelisted(cid)
     if db.cached(cid):
         msg = "You don't have an active conversation"
-        curr = ut.CONV["current"][cid]
-        if curr:
-            hist = await ut.CONV["all"][cid][curr][0].get_conversation()
+        if cid in ut.CONV["all"] and conv_id in ut.CONV["all"][cid]:
+            hist = await ut.CONV["all"][cid][conv_id][0].get_conversation()
             if "messages" in hist:
                 relevant = [
                     (msg["author"], msg["text"])
@@ -166,16 +163,11 @@ async def export_conversation(
                 text = b""
                 for msg in relevant:
                     title = "## User" if msg[0] == "user" else "## Bing"
-                    plain = backend.REF_INLINE.sub("", msg[1])
-                    plain = backend.REF.sub("", plain)
-                    plain = backend.BOLD.sub("\\1\\2", plain)
-                    plain = backend.ITA.sub("\\1\\2", plain)
-                    plain = backend.CODE.sub("\\1\\2", plain)
-                    text += f"{title}\n{plain}\n\n".encode()
+                    text += f"{title}\n{msg[1]}\n\n".encode()
                 await update.effective_message.reply_document(
                     document=text,
                     caption="Conversation exported",
-                    filename=f"{curr}.txt",
+                    filename=f"{conv_id}.md",
                 )
             else:
                 await ut.send(
@@ -523,18 +515,23 @@ async def cookies_menu(
         )
 
 
-async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def tts(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    conv_id: str,
+    msg_idx: str,
+) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
-        if cid in ut.DATA["msg"]:
-            await ut.remove_button(update, "tts")
-            query = backend.BingAI(update, context)
-            await query.tts(ut.DATA["msg"][cid])
+        if cid in ut.DATA["msg"] and conv_id in ut.DATA["msg"][cid]:
+            await backend.send_tts_audio(
+                update, context, ut.DATA["msg"][cid][conv_id], conv_id, msg_idx
+            )
         else:
-            await ut.remove_button(update, "conv_new", equal=False)
             await ut.send(
                 update, "I can't remember our last conversation, sorry!"
             )
+        await ut.remove_button(update, f"tts_send_{conv_id}_{msg_idx}")
 
 
 async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -564,10 +561,10 @@ async def message(
     if db.cached(cid) and (ut.is_reply(update) or not ut.is_group(update)):
         status = await ut.is_active_conversation(update)
         if status:
-            callback = False
+            callback = None
             if text is not None:
                 text = ut.button_query(update, text)
-                callback = True
+                callback = update.callback_query.data
             query = backend.BingAI(update, context, text, callback=callback)
             asyncio.create_task(query.run())
 

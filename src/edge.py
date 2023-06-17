@@ -49,7 +49,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await cmds.switch_conversation(update, context, callback=True)
             except KeyError:
                 await ut.remove_button(update, f"conv_set_{args[-1]}")
-        elif query.data.startswith("conv_del"):
+        elif query.data.startswith("conv_delete"):
             args = query.data.split("_")
             conv_id = args[-1]
             if cid in ut.CONV["all"] and conv_id in ut.CONV["all"][cid]:
@@ -60,11 +60,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if conv_id == cur_conv:
                     ut.CONV["current"][cid] = ""
             if len(args) > 3:
-                await ut.remove_keyboard(update)
+                await ut.remove_conv_buttons(update)
             else:
                 await cmds.delete_conversation(update, context, callback=True)
-        elif query.data == "conv_export":
-            await cmds.export_conversation(update, context)
+        elif query.data.startswith("conv_export"):
+            args = query.data.split("_")
+            await cmds.export_conversation(update, context, args[-1])
+            await ut.remove_button(update, query.data)
         elif query.data == "settings_menu":
             await cmds.settings(update, context)
         elif query.data == "langs_menu":
@@ -88,8 +90,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif query.data.startswith("response"):
             args = query.data.split("_")
             await cmds.message(update, context, args[-1])
-        elif query.data == "tts":
-            await cmds.tts(update, context)
+        elif query.data.startswith("tts_send"):
+            args = query.data.split("_")
+            await cmds.tts(update, context, args[-2], args[-1])
         elif query.data == "tts_menu":
             await cmds.tts_menu(update, context)
         elif query.data == "tts_toggle":
