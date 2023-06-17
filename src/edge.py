@@ -45,18 +45,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             args = query.data.split("_")
             if cid in ut.CONV["current"]:
                 ut.CONV["current"][cid] = args[-1]
-            await cmds.switch_conversation(update, context, callback=True)
+            try:
+                await cmds.switch_conversation(update, context, callback=True)
+            except KeyError:
+                await ut.remove_button(update, f"conv_set_{args[-1]}")
         elif query.data.startswith("conv_del"):
             args = query.data.split("_")
-            if cid in ut.CONV["all"]:
-                conv_id = args[-1]
+            conv_id = args[-1]
+            if cid in ut.CONV["all"] and conv_id in ut.CONV["all"][cid]:
                 await ut.CONV["all"][cid][conv_id][0].delete_conversation()
                 await ut.CONV["all"][cid][conv_id][0].close()
                 del ut.CONV["all"][cid][conv_id]
                 cur_conv = ut.CONV["current"][cid]
                 if conv_id == cur_conv:
                     ut.CONV["current"][cid] = ""
-            await cmds.delete_conversation(update, context, callback=True)
+            if len(args) > 3:
+                await ut.remove_keyboard(update)
+            else:
+                await cmds.delete_conversation(update, context, callback=True)
         elif query.data == "conv_export":
             await cmds.export_conversation(update, context)
         elif query.data == "settings_menu":

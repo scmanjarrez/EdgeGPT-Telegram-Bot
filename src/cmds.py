@@ -36,12 +36,12 @@ HELP = [
     ("switch_conversation", "Switch conversation"),
     ("delete_conversation", "Delete conversation"),
     ("export_conversation", "Export conversation into text file"),
-    ("image", "Generate images using Bing Image creator"),
+    ("image", "Generate images using Bing Image Creator"),
     ("settings", "Change bot settings"),
     ("history_update", "Force chat history update"),
     ("get", "Retrieve configuration files"),
     ("update", "Update configuration files"),
-    ("reset", "Reload bot files"),
+    ("reset", "Restart bot"),
     ("cancel", "Cancel current update action"),
     ("help", "List of commands"),
 ]
@@ -129,7 +129,11 @@ async def delete_conversation(
                 ut.button([(conv, f"conv_del_{conv}")])
                 for conv in sorted(ut.CONV["all"][cid].keys())
             ]
-            msg = "Open conversations" if btn_lst else ""
+            msg = (
+                "List of conversations.\n\nChoose conversation to delete"
+                if btn_lst
+                else ""
+            )
             await resp(
                 update,
                 f"{msg}",
@@ -523,11 +527,11 @@ async def tts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
         if cid in ut.DATA["msg"]:
-            await ut.all_minus_tts_keyboard(update)
+            await ut.remove_button(update, "tts")
             query = backend.BingAI(update, context)
             await query.tts(ut.DATA["msg"][cid])
         else:
-            await ut.new_keyboard(update)
+            await ut.remove_button(update, "conv_new", equal=False)
             await ut.send(
                 update, "I can't remember our last conversation, sorry!"
             )
@@ -687,22 +691,27 @@ async def gather_images(
             if not inline:
                 ut.delete_job(context, job_name)
             if data[0] is not None:
-                media = [InputMediaPhoto(img) for img in data[0]]
                 if not inline:
+                    media = [InputMediaPhoto(img) for img in data[0]]
                     await update.effective_message.reply_media_group(
                         media,
                         caption=f"<b>You</b>: {prompt}",
                         parse_mode=ParseMode.HTML,
                     )
                 else:
+                    media = [
+                        InputMediaPhoto(
+                            img,
+                            caption=f"<b>You</b>: {prompt}",
+                            parse_mode=ParseMode.HTML,
+                        )
+                        for img in data[0]
+                    ]
                     _cid = update.chosen_inline_result.inline_message_id
                     uuid = update.chosen_inline_result.result_id
-                    _text = " ".join(
-                        update.chosen_inline_result.query.split()[1:]
-                    )
                     if _cid not in ut.MEDIA:
                         ut.MEDIA[_cid] = {}
-                    ut.MEDIA[_cid][uuid] = (_text, media)
+                    ut.MEDIA[_cid][uuid] = (prompt, media)
                     await context.bot.edit_message_media(
                         media[0],
                         inline_message_id=_cid,
@@ -808,11 +817,7 @@ async def switch_inline_image(
 ) -> None:
     _cid = update.callback_query.inline_message_id
     if _cid not in ut.MEDIA or uuid not in ut.MEDIA[_cid]:
-        await context.bot.edit_message_caption(
-            caption=(
-                f"<b>You</b>: {ut.MEDIA[_cid][uuid]}\n"
-                f"Could not get other images. Try another query."
-            ),
+        await context.bot.edit_message_reply_markup(
             inline_message_id=_cid,
             reply_markup=None,
         )

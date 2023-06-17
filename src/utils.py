@@ -13,7 +13,7 @@ import traceback
 
 from pathlib import Path
 from threading import Thread
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import aiohttp
 
@@ -165,9 +165,9 @@ def setup() -> None:
     db.setup_db()
     db.update_db()
     rename_files()
-    missing = False
     with open(path("config")) as f:
         DATA["config"] = json.load(f)
+    missing = False
     if "remove_chats_on_stop" not in DATA["config"]["chats"]:
         DATA["config"]["chats"]["remove_chats_on_stop"] = False
         missing = True
@@ -176,9 +176,9 @@ def setup() -> None:
         missing = True
     if missing:
         logging.error(
-                "New setting is missing, using default value. "
-                "Check README for more info."
-            )
+            "New setting is missing, using default value. "
+            "Check README for more info."
+        )
     for cookie in DATA["config"]["cookies"]:
         _path = Path(cookie)
         if _path.exists():
@@ -276,8 +276,14 @@ def is_reply(update: Update) -> bool:
     )
 
 
-def button(buttons) -> List[InlineKeyboardButton]:
+def button(buttons: List[Tuple[str, str]]) -> List[InlineKeyboardButton]:
     return [InlineKeyboardButton(bt[0], callback_data=bt[1]) for bt in buttons]
+
+
+def button_list(
+    buttons: List[List[Tuple[str, str]]]
+) -> List[InlineKeyboardButton]:
+    return [button(btl) for btl in buttons]
 
 
 def markup(buttons: List[List[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
@@ -382,12 +388,16 @@ async def edit(
 async def edit_inline(
     update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
 ) -> None:
-    await context.bot.edit_message_text(
-        text,
-        inline_message_id=update.chosen_inline_result.inline_message_id,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True,
-    )
+    try:
+        await context.bot.edit_message_text(
+            text,
+            inline_message_id=update.chosen_inline_result.inline_message_id,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+    except BadRequest as br:
+        if not str(br).startswith("Message is not modified:"):
+            traceback.print_stack()
 
 
 async def edit_inline_media(
@@ -405,20 +415,17 @@ async def remove_keyboard(update: Update) -> None:
     await update.effective_message.edit_reply_markup(None)
 
 
-async def new_keyboard(update: Update) -> None:
-    new_kb = []
-    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
-        if kb.callback_data == "new":
-            new_kb.append(button([(kb.text, kb.callback_data)]))
-    await update.effective_message.edit_reply_markup(markup(new_kb))
-
-
-async def all_minus_tts_keyboard(update: Update) -> None:
-    new_kb = []
-    for (kb,) in update.effective_message.reply_markup.inline_keyboard:
-        if kb.callback_data != "tts":
-            new_kb.append(button([(kb.text, kb.callback_data)]))
-    await update.effective_message.edit_reply_markup(markup(new_kb))
+async def remove_button(update: Update, data: str, equal=True) -> None:
+    newkb = []
+    for kbs in update.effective_message.reply_markup.inline_keyboard:
+        subkb = []
+        for kb in kbs:
+            if equal and kb.callback_data != data:
+                subkb.append(kb)
+            elif not equal and kb.callback_data == data:
+                subkb.append(kb)
+        newkb.append(subkb)
+    await update.effective_message.edit_reply_markup(markup(newkb))
 
 
 def create_chatbot() -> Chatbot:
