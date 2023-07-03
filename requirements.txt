@@ -5,7 +5,7 @@ anyio==3.7.0
 APScheduler==3.10.1
 async-timeout==4.0.2
 attrs==23.1.0
-BingImageCreator==0.4.2
+BingImageCreator==0.4.4
 certifi==2023.5.7
 charset-normalizer==3.1.0
 edge-tts==6.1.6
