@@ -449,19 +449,20 @@ class BingAI:
         ):
             raw = message["adaptiveCards"][0]["body"][0]["text"]
             images = IMG_RESP.findall(raw)
-            if not self.inline:
-                media = [InputMediaPhoto(img) for img in images]
-                await self.update.effective_message.reply_media_group(
-                    media,
-                    caption=f"<b>You</b>: {self.text}",
-                    parse_mode=ParseMode.HTML,
-                )
-            else:
-                await asyncio.sleep(2)
-                await ut.edit_inline(
-                    self.update,
-                    self.context,
-                    f"{msg}\n"
-                    f"<code>Images can't be sent in addition to "
-                    f"messages. Use 'image' inline query instead</code>",
-                )
+            if images:
+                if not self.inline:
+                    media = [InputMediaPhoto(img) for img in images]
+                    await self.update.effective_message.reply_media_group(
+                        media,
+                        caption=f"<b>You</b>: {self.text}",
+                        parse_mode=ParseMode.HTML,
+                    )
+                else:
+                    await asyncio.sleep(2)
+                    await ut.edit_inline(
+                        self.update,
+                        self.context,
+                        f"{msg}\n"
+                        f"<code>Images can't be sent in addition to "
+                        f"messages. Use 'image' inline query instead</code>",
+                    )
