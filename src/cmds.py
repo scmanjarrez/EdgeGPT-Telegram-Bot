@@ -7,10 +7,9 @@
 
 import asyncio
 import json
+import logging
 import os
 import sys
-from multiprocessing import Queue
-from queue import Empty
 from uuid import uuid4
 
 import backend
@@ -18,6 +17,7 @@ import backend
 import database as db
 import utils as ut
 from EdgeGPT.EdgeGPT import ConversationStyle
+from EdgeGPT.ImageGen import ImageGenAsync
 
 from telegram import (
     constants,
@@ -145,6 +145,33 @@ async def delete_conversation(
 
 
 async def export_conversation(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    cid = ut.cid(update)
+    ut.add_whitelisted(cid)
+    if db.cached(cid):
+        resp = ut.send
+        if cid in ut.CONV["all"] and ut.CONV["all"][cid]:
+            btn_lst = [
+                ut.button([(conv, f"conv_export_bt_{conv}")])
+                for conv in sorted(ut.CONV["all"][cid].keys())
+            ]
+            msg = (
+                "List of conversations.\n\nChoose conversation to export"
+                if btn_lst
+                else ""
+            )
+            await resp(
+                update,
+                f"{msg}",
+                reply_markup=ut.markup(btn_lst) if btn_lst else None,
+            )
+        else:
+            msg = "You don't have open conversations"
+            await resp(update, msg)
+
+
+async def export(
     update: Update, context: ContextTypes.DEFAULT_TYPE, conv_id: str
 ) -> None:
     cid = ut.cid(update)
@@ -658,9 +685,7 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cid = ut.cid(update)
     if db.cached(cid):
         if context.args:
-            asyncio.create_task(
-                gather_images(update, context, " ".join(context.args))
-            )
+            await send_media(update, context, " ".join(context.args))
         else:
             await ut.send(
                 update,
@@ -670,71 +695,76 @@ async def image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
 
-async def gather_images(
+async def send_media(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     prompt: str,
     inline: bool = False,
 ) -> None:
-    img_queue = Queue()
-    img_gen = backend.BingImage(prompt, img_queue)
-    img_gen.start()
     action = constants.ChatAction.UPLOAD_PHOTO
     if not inline:
         job_name = ut.action_schedule(update, context, action)
-    while True:
-        try:
-            data = img_queue.get_nowait()
-            if not inline:
-                ut.delete_job(context, job_name)
-            if data[0] is not None:
-                if not inline:
-                    media = [InputMediaPhoto(img) for img in data[0]]
-                    await update.effective_message.reply_media_group(
-                        media,
-                        caption=f"<b>You</b>: {prompt}",
-                        parse_mode=ParseMode.HTML,
-                    )
+    msg = "Cookies required to use this functionality."
+    if ut.DATA["cookies"]["all"]:
+        curr = ut.DATA["cookies"]["current"]
+        msg = "Invalid cookies"
+        if curr in ut.DATA["cookies"]["_U"]:
+            async with ImageGenAsync(
+                ut.DATA["cookies"]["_U"][curr], quiet=True
+            ) as iga:
+                try:
+                    images = await iga.get_images(prompt)
+                except Exception as e:  # noqa
+                    msg = e.args[0]
+                    logging.getLogger("BingImageCreator").error(msg)
                 else:
-                    media = [
-                        InputMediaPhoto(
-                            img,
+                    if not inline:
+                        media = [InputMediaPhoto(img) for img in images]
+                        await update.effective_message.reply_media_group(
+                            media,
                             caption=f"<b>You</b>: {prompt}",
                             parse_mode=ParseMode.HTML,
                         )
-                        for img in data[0]
-                    ]
-                    _cid = update.chosen_inline_result.inline_message_id
-                    uuid = update.chosen_inline_result.result_id
-                    if _cid not in ut.MEDIA:
-                        ut.MEDIA[_cid] = {}
-                    ut.MEDIA[_cid][uuid] = (prompt, media)
-                    await context.bot.edit_message_media(
-                        media[0],
-                        inline_message_id=_cid,
-                        reply_markup=ut.markup(
-                            [
-                                ut.button(
-                                    [
-                                        ("<", f"inline_0_{uuid}_-1"),
-                                        (">", f"inline_0_{uuid}_1"),
-                                    ]
-                                )
-                            ]
-                        ),
-                    )
-            else:
-                if not inline:
-                    await ut.send(
-                        update,
-                        data[1],
-                        quote=True,
-                    )
-                else:
-                    await ut.edit_inline(update, context, data[1])
-            break
-        except Empty:
-            await asyncio.sleep(3)
+                    else:
+                        media = [
+                            InputMediaPhoto(
+                                img,
+                                caption=f"<b>You</b>: {prompt}",
+                                parse_mode=ParseMode.HTML,
+                            )
+                            for img in images
+                        ]
+                        _cid = update.chosen_inline_result.inline_message_id
+                        uuid = update.chosen_inline_result.result_id
+                        if _cid not in ut.MEDIA:
+                            ut.MEDIA[_cid] = {}
+                        ut.MEDIA[_cid][uuid] = (prompt, media)
+                        await context.bot.edit_message_media(
+                            media[0],
+                            inline_message_id=_cid,
+                            reply_markup=ut.markup(
+                                [
+                                    ut.button(
+                                        [
+                                            ("<", f"inline_0_{uuid}_-1"),
+                                            (">", f"inline_0_{uuid}_1"),
+                                        ]
+                                    )
+                                ]
+                            ),
+                        )
+                    return
+                finally:
+                    if not inline:
+                        ut.delete_job(context, job_name)
+    if not inline:
+        await ut.send(
+            update,
+            msg,
+            quote=True,
+        )
+    else:
+        await ut.edit_inline(update, context, msg)
 
 
 async def inline_query(
@@ -743,7 +773,6 @@ async def inline_query(
     query = update.inline_query.query
     if not query:
         return
-
     args = query.split()
     if len(args) > 1:
         _cmd = args[0].lower()
@@ -800,9 +829,7 @@ async def inline_message(
                 query = backend.BingAI(update, context, _text, inline=True)
                 asyncio.create_task(query.run())
         else:
-            asyncio.create_task(
-                gather_images(update, context, _text, inline=True)
-            )
+            await send_media(update, context, _text, inline=True)
 
 
 async def switch_inline_image(

@@ -9,11 +9,9 @@ import io
 import logging
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from functools import partial
-from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any, Dict, Tuple, Union
 from uuid import uuid4
@@ -25,9 +23,9 @@ import edge_tts
 import openai
 import utils as ut
 from aiohttp.web import HTTPException
-from BingImageCreator import ImageGen
 from EdgeGPT.EdgeGPT import ConversationStyle
-from telegram import constants, Update
+from telegram import constants, InputMediaPhoto, Update
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 
@@ -44,6 +42,7 @@ REF_INLINE_ST = re.compile(r"[\n]*\[\^?(\d+)\^?\]:\s*(.+)")
 GEN_RESP = re.compile(r".*Generating answers for you\.\.\.(.*)", re.DOTALL)
 SRCH_RESP = re.compile(r"Searching the web for.*")
 JSON_RESP = re.compile(r"```json(.*?)```", re.DOTALL)
+IMG_RESP = re.compile(r"!\[image\d+\]\((.*?)\)")
 ASR_API = "https://api.assemblyai.com/v2"
 EDIT_DELAY = 0.5
 CHAT_LIMIT = 3080
@@ -266,9 +265,9 @@ class BingAI:
         ):
             current = time.time()
             if current - start > delay and not final:
-                text = JSON_RESP.sub("", resp)
-                text = SRCH_RESP.sub("", text)
-                resp = GEN_RESP.sub("\\1", text)
+                resp = JSON_RESP.sub("", resp)
+                resp = SRCH_RESP.sub("", resp)
+                resp = GEN_RESP.sub("\\1", resp)
                 resp = REF_INLINE_ST.sub("", resp)
                 resp = REF_ST.sub("", resp)
                 resp = resp.strip()
@@ -444,34 +443,25 @@ class BingAI:
         if tts and not self.inline:
             await send_tts_audio(message["text"])
 
-
-class BingImage(Process):
-    def __init__(self, prompt: str, queue: Queue) -> None:
-        Process.__init__(self)
-        self.prompt = prompt
-        self.queue = queue
-        self.daemon = True
-
-    def __exit__(self):
-        sys.stdout.close()
-
-    def run(self) -> None:
-        sys.stdout = open("/dev/null", "w")
-        if ut.DATA["cookies"]["all"]:
-            curr = ut.DATA["cookies"]["current"]
-            msg = "Invalid cookies"
-            if curr in ut.DATA["cookies"]["_U"]:
-                image_gen = ImageGen(ut.DATA["cookies"]["_U"][curr])
-                images = None
-                try:
-                    images = image_gen.get_images(self.prompt)
-                except Exception as e:  # noqa
-                    logging.getLogger("BingImageCreator").error(msg)
-                    msg = e.args[0]
-                self.queue.put((images, msg))
+        if (
+            "adaptiveCards" in message
+            and "body" in message["adaptiveCards"][0]
+        ):
+            raw = message["adaptiveCards"][0]["body"][0]["text"]
+            images = IMG_RESP.findall(raw)
+            if not self.inline:
+                media = [InputMediaPhoto(img) for img in images]
+                await self.update.effective_message.reply_media_group(
+                    media,
+                    caption=f"<b>You</b>: {self.text}",
+                    parse_mode=ParseMode.HTML,
+                )
             else:
-                self.queue.put((None, msg))
-        else:
-            self.queue.put(
-                (None, "Cookies required to use this functionality.")
-            )
+                await asyncio.sleep(2)
+                await ut.edit_inline(
+                    self.update,
+                    self.context,
+                    f"{msg}\n"
+                    f"<code>Images can't be sent in addition to "
+                    f"messages. Use 'image' inline query instead</code>",
+                )

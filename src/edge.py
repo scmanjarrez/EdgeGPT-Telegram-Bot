@@ -65,8 +65,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await cmds.delete_conversation(update, context, callback=True)
         elif query.data.startswith("conv_export"):
             args = query.data.split("_")
-            await cmds.export_conversation(update, context, args[-1])
-            await ut.remove_button(update, query.data)
+            await cmds.export(update, context, args[-1])
+            if args[-2] != "bt":
+                await ut.remove_button(update, query.data)
         elif query.data == "settings_menu":
             await cmds.settings(update, context)
         elif query.data == "langs_menu":
@@ -312,6 +313,7 @@ if __name__ == "__main__":
             .token(ut.settings("token"))
             .post_init(setup_commands)
             .post_shutdown(shutdown)
+            .concurrent_updates(True)
             .build()
         )
         setup_handlers(application)
