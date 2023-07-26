@@ -669,7 +669,8 @@ async def process_file(
                         await conv.close()
                         to_del.append(conv_id)
                     for conv_id in to_del:
-                        del ut.CONV["all"][cid][conv_id]
+                        if conv_id in ut.CONV["all"][cid]:
+                            del ut.CONV["all"][cid][conv_id]
                     status = await ut.create_conversation(update, _cid)
                     if not status:
                         break
