@@ -4,11 +4,11 @@ anyio==3.7.1
 APScheduler==3.10.1
 async-timeout==4.0.2
 attrs==23.1.0
-BingImageCreator==0.4.4
+BingImageCreator==0.5.0
 certifi==2023.7.22
 charset-normalizer==3.2.0
 edge-tts==6.1.7
-EdgeGPT==0.12.1
+EdgeGPT==0.13.2
 exceptiongroup==1.1.2
 frozenlist==1.4.0
 h11==0.14.0
