@@ -426,6 +426,7 @@ class BingAI:
                 await self.update.effective_message.reply_document(
                     io.BytesIO(self.message_md.encode()),
                     filename=f"{self.conv_id}_{self.user_msg}.md",
+                    caption=html.escape(self.text)
                 )
             else:
                 await ut.edit_inline(
