@@ -236,6 +236,8 @@ class BingAI:
         self.user_msg_max = None
 
     async def run(self) -> None:
+        if self.text.startswith("#note"):
+            return
         self.conv_id = ut.CONV["current"][self.cid]
         if self.conv_id not in ut.CONV["all"][self.cid]:
             self.conv_id = await ut.create_conversation(self.update, self.cid)
@@ -257,56 +259,63 @@ class BingAI:
         edits = 0
         delay = EDIT_DELAY
         warned = False
-        async for final, resp in ut.CONV["all"][self.cid][self.conv_id][
-            0
-        ].ask_stream(
-            prompt=self.text,
-            conversation_style=getattr(ConversationStyle, db.style(self.cid)),
-        ):
-            current = time.time()
-            if current - start > delay and not final:
-                resp = JSON_RESP.sub("", resp)
-                resp = SRCH_RESP.sub("", resp)
-                resp = GEN_RESP.sub("\\1", resp)
-                resp = REF_INLINE_ST.sub("", resp)
-                resp = REF_ST.sub("", resp)
-                resp = resp.strip()
-                if resp:
-                    text = (
-                        f"<b>You</b>: {html.escape(self.text)}\n\n"
-                        f"<b>Bing</b>: {html.escape(resp)}"
-                    )
-                    if len(text) < CHAT_LIMIT:
-                        if not self.inline:
-                            await ut.edit(self.edit, text)
-                        else:
-                            await ut.edit_inline(
-                                self.update, self.context, text
-                            )
-                        edits += 1
-                        if not edits % 16:  # too many edits, slow down
-                            delay = EDIT_DELAY * 16
-                        elif not edits % 8:
-                            delay = EDIT_DELAY * 8
-                        else:
-                            delay = EDIT_DELAY
-                    elif not warned:
-                        delay = 9999
-                        msg = (
-                            f"{text}\n\n<code>Message too long. "
-                            f"Waiting full response...</code>"
+        try:
+            async for final, resp in ut.CONV["all"][self.cid][self.conv_id][
+                0
+            ].ask_stream(
+                prompt=self.text,
+                conversation_style=getattr(
+                    ConversationStyle, db.style(self.cid)
+                ),
+            ):
+                current = time.time()
+                if current - start > delay and not final:
+                    resp = JSON_RESP.sub("", resp)
+                    resp = SRCH_RESP.sub("", resp)
+                    resp = GEN_RESP.sub("\\1", resp)
+                    resp = REF_INLINE_ST.sub("", resp)
+                    resp = REF_ST.sub("", resp)
+                    resp = resp.strip()
+                    if resp:
+                        text = (
+                            f"<b>You</b>: {html.escape(self.text)}\n\n"
+                            f"<b>Bing</b>: {html.escape(resp)}"
                         )
-                        if not self.inline:
-                            await ut.edit(self.edit, msg)
-                        else:
-                            await ut.edit_inline(
-                                self.update, self.context, msg
+                        if len(text) < CHAT_LIMIT:
+                            if not self.inline:
+                                await ut.edit(self.edit, text)
+                            else:
+                                await ut.edit_inline(
+                                    self.update, self.context, text
+                                )
+                            edits += 1
+                            if not edits % 16:  # too many edits, slow down
+                                delay = EDIT_DELAY * 16
+                            elif not edits % 8:
+                                delay = EDIT_DELAY * 8
+                            else:
+                                delay = EDIT_DELAY
+                        elif not warned:
+                            delay = 9999
+                            msg = (
+                                f"{text}\n\n<code>Message too long. "
+                                f"Waiting full response...</code>"
                             )
-                        warned = True
-                        self.last_edit = text
-                start = current
-            if final:
-                self._response = resp
+                            if not self.inline:
+                                await ut.edit(self.edit, msg)
+                            else:
+                                await ut.edit_inline(
+                                    self.update, self.context, msg
+                                )
+                            warned = True
+                            self.last_edit = text
+                    start = current
+                if final:
+                    self._response = resp
+        except Exception as e:
+            await ut.send(self.update, e.args[0])
+            ut.delete_job(self.context, job_name)
+            return
         if not self.inline:
             ut.RUN[self.cid][self.conv_id].remove(turn)
             ut.delete_job(self.context, job_name)

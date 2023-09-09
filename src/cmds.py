@@ -583,8 +583,6 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def message(
     update: Update, context: ContextTypes.DEFAULT_TYPE, text: str = None
 ) -> None:
-    if "#note" in text:
-        return
     cid = ut.cid(update)
     ut.add_whitelisted(cid)
     if db.cached(cid) and (ut.is_reply(update) or not ut.is_group(update)):
