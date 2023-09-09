@@ -435,7 +435,7 @@ class BingAI:
                 await self.update.effective_message.reply_document(
                     io.BytesIO(self.message_md.encode()),
                     filename=f"{self.conv_id}_{self.user_msg}.md",
-                    caption=html.escape(self.text)
+                    caption=html.escape(self.text[:1000]),  # max size is 1024
                 )
             else:
                 await ut.edit_inline(
