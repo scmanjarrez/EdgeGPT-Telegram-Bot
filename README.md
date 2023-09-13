@@ -1,3 +1,4 @@
+# Project archived to due so many errors on EdgeGPT (archived) that won't be fixed
 # Description
 Telegram bot using [EdgeGPT](https://github.com/acheong08/EdgeGPT)
 unofficial API
